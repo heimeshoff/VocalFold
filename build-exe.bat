@@ -21,7 +21,8 @@ echo Building standalone executable...
 echo This may take a few minutes...
 echo.
 
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+REM Note: We don't use PublishSingleFile because native CUDA libraries need to be alongside the exe
+dotnet publish -c Release -r win-x64 --self-contained true
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -43,16 +44,19 @@ dir "bin\Release\net9.0\win-x64\publish\VocalFold.exe" | find "VocalFold.exe"
 echo.
 echo DEPLOYMENT NOTES:
 echo ================
-echo You can now copy VocalFold.exe to any Windows x64 machine.
+echo Copy the ENTIRE publish folder to deploy the application.
+echo All DLL files must be kept together with VocalFold.exe.
 echo.
 echo Requirements on target machine:
 echo   - NVIDIA GPU with CUDA support
 echo   - NVIDIA Drivers version 12.1.0 or higher
 echo   - NO CUDA Toolkit installation needed!
 echo.
-echo The executable is fully self-contained and includes:
+echo The application is fully self-contained and includes:
 echo   - .NET 9.0 runtime
 echo   - CUDA runtime libraries
 echo   - All dependencies
+echo.
+echo To create a shortcut, right-click VocalFold.exe and select "Create shortcut"
 echo.
 pause

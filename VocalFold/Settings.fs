@@ -63,18 +63,17 @@ let load () : AppSettings =
 
             // Validate settings
             if settings.HotkeyKey = 0u then
-                printfn "⚠️ Invalid hotkey key in settings, using defaults"
+                Logger.warning "Invalid hotkey key in settings, using defaults"
                 defaultSettings
             else
-                printfn "✓ Settings loaded from: %s" settingsPath
+                Logger.info (sprintf "Settings loaded from: %s" settingsPath)
                 settings
         else
-            printfn "ℹ️ Settings file not found, using defaults"
+            Logger.info "Settings file not found, using defaults"
             defaultSettings
     with
     | ex ->
-        eprintfn "⚠️ Error loading settings: %s" ex.Message
-        eprintfn "   Using default settings"
+        Logger.error (sprintf "Error loading settings: %s - Using default settings" ex.Message)
         defaultSettings
 
 /// Save settings to file
@@ -86,16 +85,16 @@ let save (settings: AppSettings) : bool =
         // Create directory if it doesn't exist
         if not (Directory.Exists(settingsDir)) then
             Directory.CreateDirectory(settingsDir) |> ignore
-            printfn "✓ Created settings directory: %s" settingsDir
+            Logger.info (sprintf "Created settings directory: %s" settingsDir)
 
         // Serialize and save
         let json = JsonSerializer.Serialize(settings, jsonOptions)
         File.WriteAllText(settingsPath, json)
-        printfn "✓ Settings saved to: %s" settingsPath
+        Logger.info (sprintf "Settings saved to: %s" settingsPath)
         true
     with
     | ex ->
-        eprintfn "✗ Error saving settings: %s" ex.Message
+        Logger.error (sprintf "Error saving settings: %s" ex.Message)
         false
 
 /// Get the display name for modifiers

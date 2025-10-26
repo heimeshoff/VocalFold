@@ -37,15 +37,15 @@ let ensureModelDownloaded (modelType: GgmlType) : Async<string> = async {
     // Create directory if it doesn't exist
     if not (Directory.Exists(modelDir)) then
         Directory.CreateDirectory(modelDir) |> ignore
-        printfn "📁 Created model directory: %s" modelDir
+        Logger.info (sprintf "Created model directory: %s" modelDir)
 
     // Check if model already exists
     if File.Exists(modelPath) then
-        printfn "✓ Model found: %s" modelPath
+        Logger.info (sprintf "Model found: %s" modelPath)
         return modelPath
     else
-        printfn "⬇️  Downloading Whisper.NET model (%A)..." modelType
-        printfn "   This may take a few minutes on first run..."
+        Logger.info (sprintf "Downloading Whisper.NET model (%A)..." modelType)
+        Logger.info "This may take a few minutes on first run..."
 
         try
             // Download the model
@@ -55,11 +55,11 @@ let ensureModelDownloaded (modelType: GgmlType) : Async<string> = async {
             use fileStream = File.Create(modelPath)
             do! downloader.CopyToAsync(fileStream) |> Async.AwaitTask
 
-            printfn "✓ Model downloaded successfully: %s" modelPath
+            Logger.info (sprintf "Model downloaded successfully: %s" modelPath)
             return modelPath
         with
         | ex ->
-            eprintfn "✗ Failed to download model: %s" ex.Message
+            Logger.logException ex "Failed to download Whisper model"
             return raise ex
 }
 
@@ -70,7 +70,7 @@ type WhisperService(modelPath: string) =
     // Transcribe audio samples
     member this.Transcribe(audioSamples: float32[]) : Async<string> = async {
         try
-            printfn "🤖 Transcribing audio with Whisper.NET..."
+            Logger.info "Transcribing audio with Whisper.NET..."
             let startTime = DateTime.Now
 
             use processor = whisperFactory.CreateBuilder()
@@ -97,12 +97,12 @@ type WhisperService(modelPath: string) =
             do! enumerator.DisposeAsync().AsTask() |> Async.AwaitTask
 
             let elapsed = (DateTime.Now - startTime).TotalSeconds
-            printfn "✓ Transcription complete (%.2f seconds)" elapsed
+            Logger.info (sprintf "Transcription complete (%.2f seconds)" elapsed)
 
             return transcription.Trim()
         with
         | ex ->
-            eprintfn "✗ Transcription error: %s" ex.Message
+            Logger.logException ex "Transcription error"
             return ""
     }
 
@@ -112,6 +112,15 @@ type WhisperService(modelPath: string) =
 
 // Initialize and get transcription service
 let createService (modelType: GgmlType) : Async<WhisperService> = async {
-    let! modelPath = ensureModelDownloaded modelType
-    return new WhisperService(modelPath)
+    try
+        Logger.info (sprintf "Initializing Whisper service with model: %A" modelType)
+        let! modelPath = ensureModelDownloaded modelType
+        Logger.info "Creating WhisperService instance..."
+        let service = new WhisperService(modelPath)
+        Logger.info "Whisper service initialized successfully"
+        return service
+    with
+    | ex ->
+        Logger.logException ex "Failed to initialize Whisper service"
+        return raise ex
 }

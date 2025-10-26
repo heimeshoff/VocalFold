@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Logger.fs" />
     <Compile Include="WinAPI.fs" />
     <Compile Include="AudioRecorder.fs" />
     <Compile Include="TranscriptionService.fs" />
