@@ -163,6 +163,10 @@ let mutable private ctrlPressed = false
 let mutable private shiftPressed = false
 let mutable private targetKeyPressed = false
 
+// Configurable hotkey settings
+let mutable private targetHotkeyKey = VK_SPACE
+let mutable private targetHotkeyModifiers = MOD_CONTROL ||| MOD_SHIFT
+
 // Check if GetAsyncKeyState reports a key is pressed
 [<DllImport("user32.dll")>]
 extern int16 GetAsyncKeyState(int vKey)
@@ -183,14 +187,29 @@ let private keyboardHookCallback (nCode: int) (wParam: IntPtr) (lParam: IntPtr) 
             if vkCode = VK_CONTROL then ctrlPressed <- true
             if vkCode = VK_SHIFT then shiftPressed <- true
 
-            // Check if target key (Space) is pressed with modifiers
-            if vkCode = VK_SPACE then
+            // Check if target key is pressed with required modifiers
+            if vkCode = targetHotkeyKey then
                 let ctrlDown = isKeyPressed(int VK_CONTROL)
                 let shiftDown = isKeyPressed(int VK_SHIFT)
+                let altDown = isKeyPressed(int VK_MENU)
+                let winDown = isKeyPressed(int VK_LWIN) || isKeyPressed(int VK_RWIN)
 
-                if ctrlDown && shiftDown && not targetKeyPressed then
+                // Check if required modifiers are pressed
+                let requiredCtrl = (targetHotkeyModifiers &&& MOD_CONTROL) <> 0u
+                let requiredShift = (targetHotkeyModifiers &&& MOD_SHIFT) <> 0u
+                let requiredAlt = (targetHotkeyModifiers &&& MOD_ALT) <> 0u
+                let requiredWin = (targetHotkeyModifiers &&& MOD_WIN) <> 0u
+
+                // All required modifiers must be pressed
+                let modifiersMatch =
+                    (requiredCtrl = ctrlDown) &&
+                    (requiredShift = shiftDown) &&
+                    (requiredAlt = altDown) &&
+                    (requiredWin = winDown)
+
+                if modifiersMatch && not targetKeyPressed then
                     targetKeyPressed <- true
-                    printfn "🔔 Hotkey pressed (Ctrl+Shift+Space)"
+                    printfn "🔔 Hotkey pressed"
                     match keyDownCallback with
                     | Some callback ->
                         try
@@ -205,8 +224,8 @@ let private keyboardHookCallback (nCode: int) (wParam: IntPtr) (lParam: IntPtr) 
             if vkCode = VK_CONTROL then ctrlPressed <- false
             if vkCode = VK_SHIFT then shiftPressed <- false
 
-            // Check if target key (Space) is released
-            if vkCode = VK_SPACE && targetKeyPressed then
+            // Check if target key is released
+            if vkCode = targetHotkeyKey && targetKeyPressed then
                 targetKeyPressed <- false
                 printfn "🔔 Hotkey released"
                 match keyUpCallback with
@@ -220,9 +239,13 @@ let private keyboardHookCallback (nCode: int) (wParam: IntPtr) (lParam: IntPtr) 
     CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam)
 
 // Install keyboard hook with callbacks
-let installKeyboardHook (onKeyDown: unit -> unit) (onKeyUp: unit -> unit) =
+let installKeyboardHook (onKeyDown: unit -> unit) (onKeyUp: unit -> unit) (hotkeyKey: uint32) (hotkeyModifiers: uint32) =
     keyDownCallback <- Some onKeyDown
     keyUpCallback <- Some onKeyUp
+
+    // Store the hotkey configuration
+    targetHotkeyKey <- hotkeyKey
+    targetHotkeyModifiers <- hotkeyModifiers
 
     // Create the hook procedure delegate and keep it alive
     let proc = LowLevelKeyboardProc(keyboardHookCallback)
@@ -236,7 +259,6 @@ let installKeyboardHook (onKeyDown: unit -> unit) (onKeyUp: unit -> unit) =
 
     if hookHandle <> IntPtr.Zero then
         printfn "✓ Keyboard hook installed"
-        printfn "  Listening for: Ctrl+Shift+Space"
         true
     else
         let errorCode = Marshal.GetLastWin32Error()

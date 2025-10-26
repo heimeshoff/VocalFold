@@ -6,8 +6,8 @@ open System
 type HotkeyAction = unit -> unit
 
 // Install keyboard hook with separate key down and key up callbacks
-let installKeyboardHook (onKeyDown: HotkeyAction) (onKeyUp: HotkeyAction) : bool =
-    WinAPI.installKeyboardHook onKeyDown onKeyUp
+let installKeyboardHook (onKeyDown: HotkeyAction) (onKeyUp: HotkeyAction) (hotkeyKey: uint32) (hotkeyModifiers: uint32) : bool =
+    WinAPI.installKeyboardHook onKeyDown onKeyUp hotkeyKey hotkeyModifiers
 
 // Uninstall keyboard hook
 let uninstallKeyboardHook () : bool =

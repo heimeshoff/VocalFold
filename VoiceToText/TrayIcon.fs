@@ -8,6 +8,7 @@ open Microsoft.Win32
 /// Configuration for the tray icon
 type TrayConfig = {
     ApplicationName: string
+    InitialEnabled: bool
     OnExit: unit -> unit
     OnToggleEnabled: bool -> unit
     OnSettings: unit -> unit
@@ -109,7 +110,8 @@ let create (config: TrayConfig) : TrayState =
     let contextMenu = new ContextMenuStrip()
 
     // Enabled/Disabled toggle menu item
-    let toggleItem = new ToolStripMenuItem("Enabled ✓")
+    let toggleText = if config.InitialEnabled then "Enabled ✓" else "Disabled"
+    let toggleItem = new ToolStripMenuItem(toggleText)
 
     // Settings menu item
     let settingsItem = new ToolStripMenuItem("Settings...")
@@ -126,7 +128,13 @@ let create (config: TrayConfig) : TrayState =
     let exitItem = new ToolStripMenuItem("Exit")
 
     // Create state
-    let state = { Icon = notifyIcon; IsEnabled = true }
+    let state = { Icon = notifyIcon; IsEnabled = config.InitialEnabled }
+
+    // Set initial icon based on enabled state
+    if config.InitialEnabled then
+        notifyIcon.Icon <- enabledIcon
+    else
+        notifyIcon.Icon <- disabledIcon
 
     // Toggle handler
     toggleItem.Click.Add(fun _ ->
@@ -194,6 +202,10 @@ let notifyError (state: TrayState) (message: string) =
 /// Show warning notification (for no speech detected, no audio, etc.)
 let notifyWarning (state: TrayState) (message: string) =
     state.Icon.ShowBalloonTip(2000, "VocalFold", message, ToolTipIcon.Warning)
+
+/// Show info notification (for settings changes, etc.)
+let notifyInfo (state: TrayState) (message: string) =
+    state.Icon.ShowBalloonTip(2000, "VocalFold", message, ToolTipIcon.Info)
 
 /// Cleanup the tray icon
 let dispose (state: TrayState) =

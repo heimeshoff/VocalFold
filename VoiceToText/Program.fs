@@ -17,9 +17,17 @@ let main argv =
         TranscriptionService.createService GgmlType.Base
         |> Async.RunSynchronously
 
+    // Load settings
+    let mutable currentSettings = Settings.load()
+    printfn "📋 Loaded settings:"
+    printfn "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings)
+    printfn "   Model: %s" currentSettings.ModelSize
+    printfn "   Enabled: %b" currentSettings.IsEnabled
+    printfn ""
+
     // Mutable state
     let mutable currentRecording: AudioRecorder.RecordingState option = None
-    let mutable isEnabled = true
+    let mutable isEnabled = currentSettings.IsEnabled
     let mutable shouldExit = false
     let mutable trayState: TrayIcon.TrayState option = None
 
@@ -82,21 +90,52 @@ let main argv =
     // Create tray icon
     let trayConfig : TrayIcon.TrayConfig = {
         ApplicationName = "VocalFold"
+        InitialEnabled = currentSettings.IsEnabled
         OnExit = fun () ->
             shouldExit <- true
             Application.Exit()
         OnToggleEnabled = fun enabled ->
             isEnabled <- enabled
+            // Update and save settings
+            currentSettings <- { currentSettings with IsEnabled = enabled }
+            Settings.save currentSettings |> ignore
         OnSettings = fun () ->
-            // TODO: Phase 8 - Open settings dialog
-            ()
+            // Open settings dialog
+            match SettingsDialog.show currentSettings with
+            | SettingsDialog.Accepted newSettings ->
+                // Check if hotkey changed
+                let hotkeyChanged =
+                    newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
+                    newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
+
+                // Update settings
+                currentSettings <- newSettings
+
+                // Save settings
+                if Settings.save currentSettings then
+                    match trayState with
+                    | Some tray ->
+                        if hotkeyChanged then
+                            // Reinstall keyboard hook with new hotkey
+                            HotkeyManager.uninstallKeyboardHook() |> ignore
+                            let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp currentSettings.HotkeyKey currentSettings.HotkeyModifiers
+                            if hookInstalled then
+                                TrayIcon.notifyInfo tray (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
+                            else
+                                TrayIcon.notifyError tray "Failed to register new hotkey!"
+                        else
+                            TrayIcon.notifyInfo tray "Settings saved. Restart required for model changes."
+                    | None -> ()
+            | SettingsDialog.Cancelled ->
+                () // Do nothing
     }
 
     let tray = TrayIcon.create trayConfig
     trayState <- Some tray
 
-    // Install keyboard hook
-    let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp
+    // Install keyboard hook with configured hotkey
+    printfn "🔧 Installing keyboard hook for: %s" (Settings.getHotkeyDisplayName currentSettings)
+    let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp currentSettings.HotkeyKey currentSettings.HotkeyModifiers
 
     if hookInstalled then
         try
