@@ -56,7 +56,12 @@ let registerHotkey (id: int) (modifiers: uint32) (vk: uint32) (callback: unit ->
     if result then
         printfn "✓ Hotkey registered (ID: %d)" id
     else
-        eprintfn "✗ Failed to register hotkey (ID: %d)" id
+        let errorCode = Marshal.GetLastWin32Error()
+        eprintfn "✗ Failed to register hotkey (ID: %d, Error: %d)" id errorCode
+        eprintfn "  Common causes:"
+        eprintfn "  - Hotkey already registered by another application"
+        eprintfn "  - Administrator privileges required"
+        eprintfn "  - Invalid key combination"
     result
 
 // Unregister a hotkey
