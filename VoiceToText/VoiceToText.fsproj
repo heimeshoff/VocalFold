@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
   </PropertyGroup>
 
@@ -11,6 +11,7 @@
     <Compile Include="TranscriptionService.fs" />
     <Compile Include="TextInput.fs" />
     <Compile Include="HotkeyManager.fs" />
+    <Compile Include="TrayIcon.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

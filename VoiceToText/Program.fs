@@ -1,87 +1,99 @@
 ﻿// Voice-to-Text Application
-// Phase 6: Hold-to-Record Implementation
+// Phase 7: Tray Icon Integration
 
 open System
+open System.Windows.Forms
 open Whisper.net.Ggml
 
 [<STAThread>]
 [<EntryPoint>]
 let main argv =
-    printfn "==================================="
-    printfn "Voice-to-Text Application v0.5"
-    printfn "==================================="
-    printfn ""
-
-    // List available microphones
-    AudioRecorder.listInputDevices()
-
-    printfn "Initializing Whisper.NET..."
+    // Initialize Windows Forms application
+    Application.EnableVisualStyles()
+    Application.SetCompatibleTextRenderingDefault(false)
 
     // Initialize Whisper service
     let whisperService =
         TranscriptionService.createService GgmlType.Base
         |> Async.RunSynchronously
 
-    printfn "✓ Whisper.NET ready"
-    printfn ""
-    printfn "Hotkey: Ctrl+Shift+Space"
-    printfn "Hold the hotkey and speak, release to transcribe..."
-    printfn ""
-
-    // Mutable state to track active recording
+    // Mutable state
     let mutable currentRecording: AudioRecorder.RecordingState option = None
+    let mutable isEnabled = true
+    let mutable shouldExit = false
+    let mutable trayState: TrayIcon.TrayState option = None
 
     // Key down callback - Start recording
     let onKeyDown () =
-        printfn ""
-        if currentRecording.IsNone then
+        if not isEnabled then () // Ignore if disabled
+        elif currentRecording.IsNone then
             try
                 // Start recording
                 let state = AudioRecorder.startRecording (Some 0)
                 currentRecording <- Some state
             with
             | ex ->
-                eprintfn "  ✗ Error starting recording: %s" ex.Message
                 currentRecording <- None
-        else
-            printfn "  ⚠️  Already recording, ignoring..."
+                match trayState with
+                | Some tray -> TrayIcon.notifyError tray ("Recording error: " + ex.Message)
+                | None -> ()
 
     // Key up callback - Stop recording and transcribe
     let onKeyUp () =
-        match currentRecording with
-        | Some state ->
-            try
-                // Stop recording
-                let recording = AudioRecorder.stopRecording state
-                currentRecording <- None
+        if not isEnabled then () // Ignore if disabled
+        else
+            match currentRecording with
+            | Some state ->
+                try
+                    // Stop recording
+                    let recording = AudioRecorder.stopRecording state
+                    currentRecording <- None
 
-                // Check if we have any samples
-                if recording.Samples.Length = 0 then
-                    printfn "  ⚠️  No audio captured"
-                else
-                    // Transcribe the audio
-                    printfn "  🔄 Transcribing..."
-                    let transcription =
-                        whisperService.Transcribe(recording.Samples)
-                        |> Async.RunSynchronously
-
-                    if String.IsNullOrWhiteSpace(transcription) then
-                        printfn "  ⚠️  No speech detected"
+                    // Check if we have any samples
+                    if recording.Samples.Length = 0 then
+                        match trayState with
+                        | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
+                        | None -> ()
                     else
-                        printfn "  📝 Transcription: \"%s\"" transcription
+                        // Transcribe the audio
+                        let transcription =
+                            whisperService.Transcribe(recording.Samples)
+                            |> Async.RunSynchronously
 
-                        // Type the transcribed text
-                        TextInput.typeText transcription
+                        if String.IsNullOrWhiteSpace(transcription) then
+                            match trayState with
+                            | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
+                            | None -> ()
+                        else
+                            // Type the transcribed text
+                            TextInput.typeText transcription
 
-            with
-            | ex ->
-                eprintfn "  ✗ Error: %s" ex.Message
-                currentRecording <- None
+                with
+                | ex ->
+                    currentRecording <- None
+                    match trayState with
+                    | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
+                    | None -> ()
 
-            printfn ""
-        | None ->
-            // Key up without key down - ignore
+            | None ->
+                // Key up without key down - ignore
+                ()
+
+    // Create tray icon
+    let trayConfig : TrayIcon.TrayConfig = {
+        ApplicationName = "VocalFold"
+        OnExit = fun () ->
+            shouldExit <- true
+            Application.Exit()
+        OnToggleEnabled = fun enabled ->
+            isEnabled <- enabled
+        OnSettings = fun () ->
+            // TODO: Phase 8 - Open settings dialog
             ()
+    }
+
+    let tray = TrayIcon.create trayConfig
+    trayState <- Some tray
 
     // Install keyboard hook
     let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp
@@ -105,10 +117,14 @@ let main argv =
                 | _ -> ()
             | None -> ()
 
+            // Dispose whisper service
             (whisperService :> IDisposable).Dispose()
-            printfn "✓ Cleanup complete"
+
+            // Dispose tray icon
+            TrayIcon.dispose tray
     else
-        eprintfn "✗ Failed to install keyboard hook. Exiting..."
+        TrayIcon.notifyError tray "Failed to install keyboard hook!"
+        System.Threading.Thread.Sleep(3000) // Give user time to see the error
         Environment.Exit(1)
 
     0 // Return success code
