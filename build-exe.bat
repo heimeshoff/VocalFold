@@ -7,7 +7,7 @@ echo VocalFold - Standalone Build
 echo ========================================
 echo.
 
-cd /d "%~dp0VoiceToText"
+cd /d "%~dp0VocalFold"
 
 echo Cleaning previous builds...
 dotnet clean -c Release
@@ -36,14 +36,14 @@ echo Build completed successfully!
 echo ========================================
 echo.
 echo Output location:
-echo   VoiceToText\bin\Release\net9.0\win-x64\publish\VoiceToText.exe
+echo   VocalFold\bin\Release\net9.0\win-x64\publish\VocalFold.exe
 echo.
 echo File size:
-dir "bin\Release\net9.0\win-x64\publish\VoiceToText.exe" | find "VoiceToText.exe"
+dir "bin\Release\net9.0\win-x64\publish\VocalFold.exe" | find "VocalFold.exe"
 echo.
 echo DEPLOYMENT NOTES:
 echo ================
-echo You can now copy VoiceToText.exe to any Windows x64 machine.
+echo You can now copy VocalFold.exe to any Windows x64 machine.
 echo.
 echo Requirements on target machine:
 echo   - NVIDIA GPU with CUDA support

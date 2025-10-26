@@ -6,7 +6,7 @@
 
 **Task 1.1: Project Setup**
 ```bash
-dotnet new console -lang F# -n VoiceToText
+dotnet new console -lang F# -n VocalFold
 # Update .fsproj with dependencies
 ```
 

@@ -14,7 +14,7 @@
 
 2. **Start Claude Code** in your project directory:
    ```bash
-   cd C:\path\to\VoiceToText
+   cd C:\path\to\VocalFold
    claude
    ```
 

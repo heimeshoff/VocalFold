@@ -35,7 +35,7 @@ That's it! The script will:
 
 ```bash
 # Navigate to project folder
-cd path\to\VoiceToText
+cd path\to\VocalFold
 
 # First time: restore dependencies
 dotnet restore
@@ -151,7 +151,7 @@ Want a portable exe? Easy!
 
 **Double-click**: `build-exe.bat`
 
-Result: `bin\Release\net9.0\win-x64\publish\VoiceToText.exe`
+Result: `bin\Release\net9.0\win-x64\publish\VocalFold.exe`
 
 - **Size**: ~60MB
 - **Portable**: Copy anywhere

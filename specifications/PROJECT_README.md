@@ -29,7 +29,7 @@ CLAUDE_CODE_WORKFLOW.md (How to use Claude Code)
 
 **Open Claude Code** in your project directory:
 ```bash
-cd C:\path\to\VoiceToText
+cd C:\path\to\VocalFold
 claude
 ```
 
@@ -359,7 +359,7 @@ After implementation complete:
 ## 🎮 Usage (After Implementation)
 
 ### Quick Start
-1. Run `VoiceToText.exe`
+1. Run `VocalFold.exe`
 2. See console: "Press Ctrl+Windows"
 3. Click in any text field
 4. Press Ctrl+Windows

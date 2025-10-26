@@ -24,7 +24,7 @@ You have **4 essential files** for Claude Code:
 
 **Copy these 4 files to your project directory**:
 ```
-C:\YourProjects\VoiceToText\
+C:\YourProjects\VocalFold\
   ├─ SPECIFICATION.md
   ├─ ARCHITECTURE.md
   ├─ TASKS.md
@@ -34,7 +34,7 @@ C:\YourProjects\VoiceToText\
 ### Step 4: Start Claude Code (30 seconds)
 
 ```bash
-cd C:\YourProjects\VoiceToText
+cd C:\YourProjects\VocalFold
 claude
 ```
 

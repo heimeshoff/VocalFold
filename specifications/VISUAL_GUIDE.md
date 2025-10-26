@@ -3,7 +3,7 @@
 ## 📁 Complete File Structure
 
 ```
-VoiceToText/
+VocalFold/
 │
 ├── 🎯 CORE DOCUMENTS FOR CLAUDE CODE
 │   ├── START_HERE.md ⭐⭐⭐ [READ FIRST]
@@ -23,7 +23,7 @@ VoiceToText/
 │   └── DEVELOPER_GUIDE.md [Customization]
 │
 ├── 💻 SOURCE CODE (To be created by Claude Code)
-│   ├── VoiceToText.fsproj [Project file]
+│   ├── VocalFold.fsproj [Project file]
 │   ├── Program.fs [Main application]
 │   └── [Other F# files as needed]
 │
@@ -33,7 +33,7 @@ VoiceToText/
 │
 └── 📦 BUILD OUTPUT (Created during build)
     └── bin/Release/net9.0/win-x64/publish/
-        └── VoiceToText.exe [Final executable]
+        └── VocalFold.exe [Final executable]
 ```
 
 ---
@@ -83,7 +83,7 @@ VoiceToText/
 ┌────────────────────────────────────────────────────────┐
 │                 FINAL RESULT                           │
 │                         ↓                              │
-│  ✅ Working VoiceToText.exe                            │
+│  ✅ Working VocalFold.exe                              │
 │  ✅ Complete source code                               │
 │  ✅ Documentation                                       │
 │  ✅ Helper scripts                                      │

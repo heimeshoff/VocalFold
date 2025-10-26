@@ -46,7 +46,7 @@ dotnet restore
    - Right-click exe → "Run as Administrator"
 
 3. **Antivirus blocking global hotkeys**
-   - Add exception for VoiceToText.exe
+   - Add exception for VocalFold.exe
 
 4. **Application not running**
    - Check if process is running in Task Manager

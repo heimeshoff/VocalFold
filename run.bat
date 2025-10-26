@@ -7,7 +7,7 @@ echo VocalFold - Voice to Text Application
 echo ========================================
 echo.
 
-cd /d "%~dp0VoiceToText"
+cd /d "%~dp0VocalFold"
 
 echo Building application...
 dotnet build
