@@ -14,8 +14,19 @@ printfn ""
 
 // Hotkey callback function
 let onHotkeyPressed () =
-    printfn "✓ Hotkey callback executed!"
-    printfn "  (This is where we'll record audio)"
+    printfn ""
+    printfn "✓ Hotkey detected!"
+
+    try
+        // Record audio for 5 seconds
+        let recording = AudioRecorder.recordAudio 5
+        printfn "  ✓ Audio captured: %d samples at %d Hz" recording.Samples.Length recording.SampleRate
+        printfn "  (Next: transcribe with Whisper.NET)"
+    with
+    | ex ->
+        eprintfn "  ✗ Recording error: %s" ex.Message
+
+    printfn ""
 
 // Register the hotkey: Ctrl+Shift+Space (safer for testing)
 let hotkeyId = 1
