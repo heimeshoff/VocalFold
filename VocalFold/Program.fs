@@ -31,17 +31,29 @@ let main argv =
     let mutable shouldExit = false
     let mutable trayState: TrayIcon.TrayState option = None
 
+    // Create overlay manager
+    let overlayManager = OverlayWindow.OverlayManager()
+
     // Key down callback - Start recording
     let onKeyDown () =
         if not isEnabled then () // Ignore if disabled
         elif currentRecording.IsNone then
             try
-                // Start recording
-                let state = AudioRecorder.startRecording (Some 0)
+                // Show overlay in recording state
+                overlayManager.ShowRecording()
+
+                // Start recording with level update callback
+                let onLevelUpdate level =
+                    overlayManager.UpdateLevel(float level)
+
+                let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate)
                 currentRecording <- Some state
             with
             | ex ->
                 currentRecording <- None
+                overlayManager.ShowError()
+                System.Threading.Thread.Sleep(1000)
+                overlayManager.Hide()
                 match trayState with
                 | Some tray -> TrayIcon.notifyError tray ("Recording error: " + ex.Message)
                 | None -> ()
@@ -59,16 +71,21 @@ let main argv =
 
                     // Check if we have any samples
                     if recording.Samples.Length = 0 then
+                        overlayManager.Hide()
                         match trayState with
                         | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
                         | None -> ()
                     else
+                        // Show transcribing state
+                        overlayManager.ShowTranscribing()
+
                         // Transcribe the audio
                         let transcription =
                             whisperService.Transcribe(recording.Samples)
                             |> Async.RunSynchronously
 
                         if String.IsNullOrWhiteSpace(transcription) then
+                            overlayManager.Hide()
                             match trayState with
                             | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
                             | None -> ()
@@ -76,9 +93,18 @@ let main argv =
                             // Type the transcribed text
                             TextInput.typeText transcription
 
+                            // Hide overlay after a short delay
+                            async {
+                                do! Async.Sleep(500)
+                                overlayManager.Hide()
+                            } |> Async.Start
+
                 with
                 | ex ->
                     currentRecording <- None
+                    overlayManager.ShowError()
+                    System.Threading.Thread.Sleep(1000)
+                    overlayManager.Hide()
                     match trayState with
                     | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
                     | None -> ()
@@ -158,6 +184,9 @@ let main argv =
 
             // Dispose whisper service
             (whisperService :> IDisposable).Dispose()
+
+            // Cleanup overlay
+            overlayManager.Cleanup()
 
             // Dispose tray icon
             TrayIcon.dispose tray

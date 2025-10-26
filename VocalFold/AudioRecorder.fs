@@ -18,7 +18,9 @@ type RecordingState = {
     mutable MaxLevel: float32
     mutable AvgLevel: float32
     mutable SampleCount: int
+    mutable CurrentLevel: float32  // Current instantaneous level for visualization
     RecordingStopped: System.Threading.ManualResetEvent
+    OnLevelUpdate: (float32 -> unit) option  // Callback for real-time level updates
 }
 
 // List all available input devices
@@ -127,7 +129,7 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
     }
 
 // Start recording (non-blocking, returns RecordingState)
-let startRecording (deviceNumber: int option) : RecordingState =
+let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) option) : RecordingState =
     match deviceNumber with
     | Some d -> printfn "🎤 Recording started from device %d..." d
     | None -> printfn "🎤 Recording started from default device..."
@@ -160,7 +162,9 @@ let startRecording (deviceNumber: int option) : RecordingState =
         MaxLevel = 0.0f
         AvgLevel = 0.0f
         SampleCount = 0
+        CurrentLevel = 0.0f
         RecordingStopped = new System.Threading.ManualResetEvent(false)
+        OnLevelUpdate = onLevelUpdate
     }
 
     // Data available event handler
@@ -169,12 +173,23 @@ let startRecording (deviceNumber: int option) : RecordingState =
         state.RecordedSamples.AddRange(samples)
 
         // Calculate audio levels for monitoring
+        let mutable bufferMaxLevel = 0.0f
         for sample in samples do
             let absLevel = abs sample
             if absLevel > state.MaxLevel then
                 state.MaxLevel <- absLevel
+            if absLevel > bufferMaxLevel then
+                bufferMaxLevel <- absLevel
             state.AvgLevel <- state.AvgLevel + absLevel
             state.SampleCount <- state.SampleCount + 1
+
+        // Update current level (use buffer max for visualization)
+        state.CurrentLevel <- bufferMaxLevel
+
+        // Call level update callback if provided
+        match state.OnLevelUpdate with
+        | Some callback -> callback bufferMaxLevel
+        | None -> ()
     )
 
     // Recording stopped event
