@@ -1,15 +1,28 @@
 ﻿// Voice-to-Text Application
-// Task 1.3: Test WinAPI Module - Hotkey Detection
+// Phase 3: Testing Whisper.NET Transcription
 
 open System
+open Whisper.net.Ggml
 
 printfn "==================================="
-printfn "Voice-to-Text Application v0.1"
+printfn "Voice-to-Text Application v0.3"
 printfn "==================================="
 printfn ""
-printfn "Testing hotkey detection..."
+
+// List available microphones
+AudioRecorder.listInputDevices()
+
+printfn "Initializing Whisper.NET..."
+
+// Initialize Whisper service
+let whisperService =
+    TranscriptionService.createService GgmlType.Base
+    |> Async.RunSynchronously
+
+printfn "✓ Whisper.NET ready"
+printfn ""
 printfn "Hotkey: Ctrl+Shift+Space"
-printfn "(We'll switch to Ctrl+Windows after testing)"
+printfn "Press the hotkey and speak for 5 seconds..."
 printfn ""
 
 // Hotkey callback function
@@ -18,13 +31,28 @@ let onHotkeyPressed () =
     printfn "✓ Hotkey detected!"
 
     try
-        // Record audio for 5 seconds
-        let recording = AudioRecorder.recordAudio 5
-        printfn "  ✓ Audio captured: %d samples at %d Hz" recording.Samples.Length recording.SampleRate
-        printfn "  (Next: transcribe with Whisper.NET)"
+        // Record audio for 5 seconds (using default device)
+        let recording = AudioRecorder.recordAudio 5 (Some 0)
+
+        // Save recording to file for debugging
+        let timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+        let filename = sprintf "recording_%s.wav" timestamp
+        AudioRecorder.saveToWavFile filename recording
+
+        // Transcribe the audio
+        let transcription =
+            whisperService.Transcribe(recording.Samples)
+            |> Async.RunSynchronously
+
+        if String.IsNullOrWhiteSpace(transcription) then
+            printfn "  ⚠️  No speech detected"
+        else
+            printfn "  📝 Transcription: \"%s\"" transcription
+            printfn "  (Next: type this text)"
+
     with
     | ex ->
-        eprintfn "  ✗ Recording error: %s" ex.Message
+        eprintfn "  ✗ Error: %s" ex.Message
 
     printfn ""
 
@@ -42,6 +70,7 @@ if registered then
     finally
         // Cleanup
         WinAPI.unregisterHotkey hotkeyId |> ignore
+        (whisperService :> IDisposable).Dispose()
         printfn "✓ Cleanup complete"
 else
     eprintfn "✗ Failed to register hotkey. Exiting..."
