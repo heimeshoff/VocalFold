@@ -9,6 +9,8 @@
     <Compile Include="WinAPI.fs" />
     <Compile Include="AudioRecorder.fs" />
     <Compile Include="TranscriptionService.fs" />
+    <Compile Include="TextInput.fs" />
+    <Compile Include="HotkeyManager.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
@@ -18,6 +20,10 @@
     <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.7.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 
 </Project>
