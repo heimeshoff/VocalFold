@@ -342,22 +342,214 @@ Fine-tune overlay behavior:
 
 ---
 
+### Phase 10: Character-by-Character Typing ⬜
+
+**Context**: Current implementation may use Ctrl+V to paste, which overwrites the system clipboard. Users lose their copied content. Need true character-by-character typing with proper timing.
+
+**Task 10.1: Review Current TextInput Implementation**
+
+Analyze existing typing mechanism:
+- Check if using clipboard paste (Ctrl+V)
+- Identify where text output happens
+- Document current character timing
+- Note any issues with dropped characters
+
+**Acceptance**: Clear understanding of current implementation
+
+---
+
+**Task 10.2: Implement Character-by-Character Typing**
+
+Replace clipboard paste with individual character simulation:
+- Use InputSimulatorCore's Keyboard.TextEntry() for each character
+- Add configurable delay between characters (default: 10ms)
+- Handle special characters (newlines, tabs, Unicode)
+- Add settings option for typing speed:
+  ```fsharp
+  type TypingSpeed =
+      | Fast      // 5ms delay
+      | Normal    // 10ms delay
+      | Slow      // 20ms delay
+      | Custom of int
+  ```
+- Test with long text (100+ characters) to ensure no drops
+- Measure and log actual typing speed
+
+**Acceptance**: Text types character-by-character without clipboard usage
+
+---
+
+**Task 10.3: Advanced Character Handling**
+
+Handle edge cases:
+- Preserve whitespace (spaces, newlines, tabs)
+- Support Unicode characters (emoji, accented letters)
+- Handle keyboard layout differences
+- Add retry logic for failed key presses
+- Option to pause/cancel mid-typing (future enhancement placeholder)
+
+**Acceptance**: Reliable typing across all character types
+
+---
+
+**Task 10.4: Add Typing Speed to Settings**
+
+Integrate typing speed into configuration:
+- Add `TypingSpeed` field to AppSettings
+- Update settings UI to show typing speed options
+- Add radio buttons or dropdown: Fast / Normal / Slow / Custom
+- Persist typing speed preference
+- Apply speed setting in TextInput module
+
+**Acceptance**: User can configure typing speed via settings UI
+
+---
+
+### Phase 11: Keyword Replacement System ⬜
+
+**Context**: Enable users to speak keywords that get replaced with longer configured text. Example: say "German email footer" → types actual email signature.
+
+**Task 11.1: Settings Data Structure for Keywords**
+
+Design keyword replacement storage:
+- Add to AppSettings:
+  ```fsharp
+  type KeywordReplacement = {
+      Keyword: string           // What to listen for
+      Replacement: string       // What to type instead
+      CaseSensitive: bool       // Match case exactly?
+      WholePhrase: bool         // Match only complete phrase?
+  }
+
+  type AppSettings = {
+      // ... existing fields ...
+      KeywordReplacements: KeywordReplacement list
+  }
+  ```
+- Store in settings.json
+- Default to empty list on first run
+- Handle JSON serialization/deserialization
+
+**Acceptance**: Settings structure supports keyword mappings
+
+---
+
+**Task 11.2: Keyword Replacement Logic**
+
+Implement text processing pipeline:
+- Create new module: `TextProcessor`
+- Function: `processTranscription: string -> KeywordReplacement list -> string`
+- Replacement algorithm:
+  1. Sort replacements by keyword length (longest first)
+  2. For each replacement:
+     - If `WholePhrase = true`: match only complete words/phrases
+     - If `CaseSensitive = false`: case-insensitive matching
+     - Replace all occurrences
+  3. Return processed text
+- Handle overlapping keywords (longest match wins)
+- Preserve original text if no matches
+- Log replacements made (for debugging)
+
+Example:
+```fsharp
+Input: "Dear Sir comma German email footer"
+Keywords: [("comma", ","), ("German email footer", "Best regards,\nJohn Doe\n...")]
+Output: "Dear Sir, Best regards,\nJohn Doe\n..."
+```
+
+**Acceptance**: Keyword replacement works correctly with test cases
+
+---
+
+**Task 11.3: Integration into Transcription Flow**
+
+Wire keyword processing into main pipeline:
+```
+Old: Transcribe → Type Text
+New: Transcribe → Process Keywords → Type Text
+```
+
+Changes needed:
+- Modify main workflow in Program.fs or Main
+- Load keyword replacements from settings
+- Call `TextProcessor.processTranscription` before typing
+- Add timing logs to track processing overhead
+- Handle errors gracefully (skip replacement on error)
+
+**Acceptance**: Keywords are replaced in transcribed text before typing
+
+---
+
+**Task 11.4: Keyword Management UI**
+
+Create interface for managing keywords:
+- Settings window section: "Keyword Replacements"
+- List view showing all configured keywords
+- Buttons:
+  - "Add New" - Opens dialog to add keyword/replacement pair
+  - "Edit" - Modify existing keyword
+  - "Delete" - Remove keyword
+  - "Import/Export" - Save/load keyword sets (JSON file)
+- Input dialog fields:
+  - Keyword text box
+  - Replacement text box (multi-line for long text)
+  - "Case Sensitive" checkbox
+  - "Whole Phrase Only" checkbox
+- Validate inputs (no empty keywords)
+- Save changes to settings.json
+
+**Acceptance**: User can manage keyword replacements via GUI
+
+---
+
+**Task 11.5: Keyword Replacement Testing & Polish**
+
+Comprehensive testing:
+- Test with common use cases:
+  - Email signatures
+  - Code snippets
+  - Frequently used phrases
+  - Punctuation shortcuts ("comma", "period", "question mark")
+- Test edge cases:
+  - Very long replacements (1000+ characters)
+  - Unicode in keywords/replacements
+  - Overlapping keywords
+  - Case sensitivity
+  - Multiple replacements in one transcription
+- Performance testing:
+  - Measure processing time with 50+ keywords
+  - Ensure <50ms overhead for replacement processing
+- Add documentation:
+  - Example keyword sets
+  - Best practices (e.g., use whole phrase for multi-word keywords)
+  - Performance considerations
+
+**Acceptance**: Keyword replacement is fast, reliable, and well-documented
+
+---
+
 ## Success Criteria
 
 ✅ Compiles without errors
 ✅ Hotkey detection works
 ✅ Audio recording works
 ✅ Whisper.NET transcription works
-✅ Text typing works
+✅ Text typing works (character-by-character, no clipboard)
 ✅ End-to-end workflow complete
 ✅ Standalone exe builds
 ✅ Runs in system tray
 ✅ Auto-starts with Windows
 ✅ Hotkey is user-configurable
 ✅ Voice visualization provides clear feedback
+✅ Character-by-character typing preserves clipboard
+✅ Keyword replacement system functional
 
 ---
 
 **Status**: Ready for implementation
-**Estimated Time**: 4-6 hours (Phases 1-6) + 6-8 hours (Phases 7-9)
-**Next Task**: 1.1 Project Setup
+**Estimated Time**:
+- Phases 1-6: 4-6 hours
+- Phases 7-9: 6-8 hours
+- Phase 10: 2-3 hours
+- Phase 11: 4-6 hours
+**Next Task**: 1.1 Project Setup (or continue from current phase)
