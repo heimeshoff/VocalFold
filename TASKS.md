@@ -196,6 +196,152 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 - Module test: Call function with test input
 - Console output: Verify feedback messages
 
+---
+
+### Phase 7: Windows Tray Integration ⬜
+
+**Task 7.1: Tray Icon Implementation**
+
+Create system tray functionality:
+- Add System.Windows.Forms reference (for NotifyIcon)
+- Create tray icon with custom icon
+- Add context menu with basic options:
+  - "Enable/Disable Voice Input" toggle
+  - "Settings..."
+  - "Exit"
+- Remove console window (hide on startup)
+- Ensure app runs without visible window
+
+**Acceptance**: Application runs in system tray with working context menu
+
+---
+
+**Task 7.2: Windows Startup Registration**
+
+Implement auto-start on Windows boot:
+- Add registry key to `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`
+- Create helper functions:
+  - `enableStartup()` - Add to startup
+  - `disableStartup()` - Remove from startup
+  - `isStartupEnabled()` - Check current state
+- Add "Start with Windows" toggle to tray context menu
+- Store executable path correctly
+
+**Acceptance**: Application auto-starts after Windows reboot
+
+---
+
+**Task 7.3: Tray Notifications**
+
+Add user feedback via tray notifications:
+- Show balloon notification when recording starts
+- Show notification when transcription completes
+- Show error notifications for failures
+- Keep notifications brief and actionable
+
+**Acceptance**: User receives visual feedback without console
+
+---
+
+### Phase 8: Hotkey Configuration ⬜
+
+**Task 8.1: Settings Persistence**
+
+Create configuration system:
+- Define settings type:
+  ```fsharp
+  type AppSettings = {
+      HotkeyModifiers: uint32
+      HotkeyKey: uint32
+      IsEnabled: bool
+      ModelSize: string
+      RecordingDuration: int
+  }
+  ```
+- Store settings in `%APPDATA%/VocalFold/settings.json`
+- Implement save/load functions
+- Handle missing/corrupted config files
+
+**Acceptance**: Settings persist across application restarts
+
+---
+
+**Task 8.2: Hotkey Configuration UI**
+
+Create settings window:
+- Simple WPF or WinForms dialog
+- Hotkey picker control (record key combination)
+- Display current hotkey
+- "Apply" and "Cancel" buttons
+- Unregister old hotkey, register new one
+- Validate hotkey combinations (prevent conflicts)
+
+**Acceptance**: User can change hotkey via GUI
+
+---
+
+**Task 8.3: Enable/Disable Toggle**
+
+Implement feature activation control:
+- Add toggle state to tray icon
+- Change tray icon appearance when disabled (grayed out)
+- Unregister hotkey when disabled
+- Re-register hotkey when enabled
+- Update context menu text ("Enabled ✓" / "Disabled")
+- Persist enabled state in settings
+
+**Acceptance**: User can temporarily disable voice input without exiting
+
+---
+
+### Phase 9: Voice Activity Visualization ⬜
+
+**Task 9.1: Overlay Window Structure**
+
+Create transparent overlay for visual feedback:
+- WPF layered window (AllowsTransparency=true)
+- Topmost window (always visible)
+- No taskbar entry
+- No window border
+- Click-through (ignore mouse input)
+- Position near system tray area
+
+**Acceptance**: Transparent window appears on screen
+
+---
+
+**Task 9.2: Voice Activity Animation**
+
+Implement visual recording indicator:
+- Design options:
+  - Animated microphone icon (pulsing)
+  - Simple circular waveform visualization
+  - Audio level meter bars
+- Use audio buffer data for real-time animation
+- Smooth animation (30-60 fps)
+- Color coding:
+  - Blue/White: Recording
+  - Green: Transcribing
+  - Red: Error
+
+**Acceptance**: Visual feedback shows during recording
+
+---
+
+**Task 9.3: Positioning & Polish**
+
+Fine-tune overlay behavior:
+- Calculate tray icon position from Windows API
+- Position overlay near tray (e.g., above and slightly left)
+- Add fade-in/fade-out animations
+- Auto-hide after transcription complete (500ms delay)
+- Handle multi-monitor scenarios
+- Scale for different DPI settings
+
+**Acceptance**: Overlay appears smoothly near tray icon and disappears after use
+
+---
+
 ## Success Criteria
 
 ✅ Compiles without errors
@@ -204,10 +350,14 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 ✅ Whisper.NET transcription works
 ✅ Text typing works
 ✅ End-to-end workflow complete
-✅ Standalone exe builds  
+✅ Standalone exe builds
+✅ Runs in system tray
+✅ Auto-starts with Windows
+✅ Hotkey is user-configurable
+✅ Voice visualization provides clear feedback
 
 ---
 
-**Status**: Ready for implementation  
-**Estimated Time**: 4-6 hours  
+**Status**: Ready for implementation
+**Estimated Time**: 4-6 hours (Phases 1-6) + 6-8 hours (Phases 7-9)
 **Next Task**: 1.1 Project Setup
