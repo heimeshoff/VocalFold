@@ -2,13 +2,27 @@ module HotkeyManager
 
 open System
 
-// Type alias for hotkey callback function
+// Type alias for hotkey callback functions
 type HotkeyAction = unit -> unit
+
+// Install keyboard hook with separate key down and key up callbacks
+let installKeyboardHook (onKeyDown: HotkeyAction) (onKeyUp: HotkeyAction) : bool =
+    WinAPI.installKeyboardHook onKeyDown onKeyUp
+
+// Uninstall keyboard hook
+let uninstallKeyboardHook () : bool =
+    WinAPI.uninstallKeyboardHook()
+
+// Start the Windows message loop
+let messageLoop () : unit =
+    WinAPI.messageLoop()
+
+// ===== Legacy Hotkey Functions (for backward compatibility) =====
 
 // Internal storage for the callback
 let mutable private hotkeyCallback: HotkeyAction option = None
 
-// Register a global hotkey with a callback
+// Register a global hotkey with a callback (legacy)
 let registerHotkey (hotkeyId: int) (modifiers: uint32) (virtualKey: uint32) (callback: HotkeyAction) : bool =
     // Store the callback
     hotkeyCallback <- Some callback
@@ -27,7 +41,7 @@ let registerHotkey (hotkeyId: int) (modifiers: uint32) (virtualKey: uint32) (cal
 
     registered
 
-// Unregister a global hotkey
+// Unregister a global hotkey (legacy)
 let unregisterHotkey (hotkeyId: int) : bool =
     let unregistered = WinAPI.unregisterHotkey hotkeyId
 
@@ -38,7 +52,3 @@ let unregisterHotkey (hotkeyId: int) : bool =
     hotkeyCallback <- None
 
     unregistered
-
-// Start the Windows message loop
-let messageLoop () : unit =
-    WinAPI.messageLoop()

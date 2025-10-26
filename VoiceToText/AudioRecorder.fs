@@ -10,6 +10,17 @@ type RecordingResult = {
     SampleRate: int
 }
 
+// State for active recording
+type RecordingState = {
+    WaveIn: WaveInEvent
+    RecordedSamples: List<float32>
+    StartTime: DateTime
+    mutable MaxLevel: float32
+    mutable AvgLevel: float32
+    mutable SampleCount: int
+    RecordingStopped: System.Threading.ManualResetEvent
+}
+
 // List all available input devices
 let listInputDevices () =
     printfn "Available microphones:"
@@ -109,6 +120,108 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
         printfn "     - Wrong microphone selected"
         printfn "     - Microphone is muted or volume is too low"
         printfn "     - No audio input detected"
+
+    {
+        Samples = totalSamples
+        SampleRate = sampleRate
+    }
+
+// Start recording (non-blocking, returns RecordingState)
+let startRecording (deviceNumber: int option) : RecordingState =
+    match deviceNumber with
+    | Some d -> printfn "🎤 Recording started from device %d..." d
+    | None -> printfn "🎤 Recording started from default device..."
+
+    let sampleRate = 16000 // Whisper.NET optimized format
+    let channels = 1       // Mono
+
+    // Setup wave format
+    let waveFormat = WaveFormat(sampleRate, 16, channels)
+
+    // Storage for recorded samples
+    let recordedSamples = List<float32>()
+
+    // Create wave input device
+    let waveIn = new WaveInEvent(
+        WaveFormat = waveFormat,
+        BufferMilliseconds = 100
+    )
+
+    // Set device number if specified
+    match deviceNumber with
+    | Some d -> waveIn.DeviceNumber <- d
+    | None -> ()
+
+    // Create state
+    let state = {
+        WaveIn = waveIn
+        RecordedSamples = recordedSamples
+        StartTime = DateTime.Now
+        MaxLevel = 0.0f
+        AvgLevel = 0.0f
+        SampleCount = 0
+        RecordingStopped = new System.Threading.ManualResetEvent(false)
+    }
+
+    // Data available event handler
+    waveIn.DataAvailable.Add(fun args ->
+        let samples = bytesToFloat32 args.Buffer args.BytesRecorded
+        state.RecordedSamples.AddRange(samples)
+
+        // Calculate audio levels for monitoring
+        for sample in samples do
+            let absLevel = abs sample
+            if absLevel > state.MaxLevel then
+                state.MaxLevel <- absLevel
+            state.AvgLevel <- state.AvgLevel + absLevel
+            state.SampleCount <- state.SampleCount + 1
+    )
+
+    // Recording stopped event
+    waveIn.RecordingStopped.Add(fun _ ->
+        state.RecordingStopped.Set() |> ignore
+    )
+
+    // Start recording
+    waveIn.StartRecording()
+    printfn "  🔴 Recording... (release hotkey to stop)"
+
+    state
+
+// Stop recording and return result
+let stopRecording (state: RecordingState) : RecordingResult =
+    // Stop recording
+    state.WaveIn.StopRecording()
+
+    // Wait for the recording to fully stop (max 2 seconds)
+    state.RecordingStopped.WaitOne(2000) |> ignore
+
+    // Dispose of the wave input
+    state.WaveIn.Dispose()
+    state.RecordingStopped.Dispose()
+
+    let totalSamples = state.RecordedSamples.ToArray()
+    let sampleRate = 16000
+    let duration = (DateTime.Now - state.StartTime).TotalSeconds
+    let avgLevelNormalized = if state.SampleCount > 0 then state.AvgLevel / float32 state.SampleCount else 0.0f
+
+    printfn "  ✓ Recording complete (%.1f seconds, %d samples)"
+        duration
+        totalSamples.Length
+    printfn "  📊 Audio levels - Max: %.3f, Avg: %.3f" state.MaxLevel avgLevelNormalized
+
+    // Warn if audio is too quiet
+    if state.MaxLevel < 0.01f then
+        printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" state.MaxLevel
+        printfn "     This might indicate:"
+        printfn "     - Wrong microphone selected"
+        printfn "     - Microphone is muted or volume is too low"
+        printfn "     - No audio input detected"
+
+    // Warn if recording is too short
+    if duration < 0.3 then
+        printfn "  ⚠️  WARNING: Recording is very short (%.2f seconds)" duration
+        printfn "     Hold the hotkey longer for better transcription results"
 
     {
         Samples = totalSamples
