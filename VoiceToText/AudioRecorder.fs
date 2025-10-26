@@ -18,35 +18,15 @@ let listInputDevices () =
         printfn "  [%d] %s (%d channels)" i caps.ProductName caps.Channels
     printfn ""
 
-// Save recording to WAV file for debugging
-let saveToWavFile (filePath: string) (recording: RecordingResult) =
-    try
-        let waveFormat = WaveFormat(recording.SampleRate, 16, 1) // 16-bit mono
-        use writer = new WaveFileWriter(filePath, waveFormat)
-
-        // Convert float32 samples back to 16-bit PCM
-        let bytes = Array.zeroCreate<byte>(recording.Samples.Length * 2)
-        for i in 0 .. recording.Samples.Length - 1 do
-            let sample16 = int16 (recording.Samples.[i] * 32767.0f)
-            let byteIndex = i * 2
-            bytes.[byteIndex] <- byte (sample16 &&& 0xFFs)
-            bytes.[byteIndex + 1] <- byte ((sample16 >>> 8) &&& 0xFFs)
-
-        writer.Write(bytes, 0, bytes.Length)
-        printfn "  💾 Audio saved to: %s" filePath
-    with
-    | ex ->
-        eprintfn "  ✗ Failed to save WAV file: %s" ex.Message
-
 // Convert byte buffer to float32 array
 let private bytesToFloat32 (buffer: byte[]) (bytesRecorded: int) =
     let sampleCount = bytesRecorded / 2 // 16-bit samples = 2 bytes per sample
     let samples = Array.zeroCreate<float32> sampleCount
 
     for i in 0 .. sampleCount - 1 do
-        // Read 16-bit PCM sample (little-endian)
+        // Read 16-bit PCM sample (little-endian) using BitConverter for proper sign handling
         let byteIndex = i * 2
-        let sample16 = int16 (buffer.[byteIndex] ||| (buffer.[byteIndex + 1] <<< 8))
+        let sample16 = BitConverter.ToInt16(buffer, byteIndex)
         // Convert to float32 in range [-1.0, 1.0]
         samples.[i] <- float32 sample16 / 32768.0f
 

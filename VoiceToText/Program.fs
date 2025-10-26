@@ -34,11 +34,6 @@ let onHotkeyPressed () =
         // Record audio for 5 seconds (using default device)
         let recording = AudioRecorder.recordAudio 5 (Some 0)
 
-        // Save recording to file for debugging
-        let timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
-        let filename = sprintf "recording_%s.wav" timestamp
-        AudioRecorder.saveToWavFile filename recording
-
         // Transcribe the audio
         let transcription =
             whisperService.Transcribe(recording.Samples)
