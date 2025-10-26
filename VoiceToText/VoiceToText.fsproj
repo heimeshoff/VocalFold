@@ -17,7 +17,7 @@
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.7.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.7.1" />
-    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.7.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.7.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
   </ItemGroup>
