@@ -65,8 +65,8 @@ let main argv =
                 elif currentRecording.IsNone then
                     Logger.info "Starting recording..."
                     try
-                        // Show overlay in recording state
-                        overlayManager.ShowRecording()
+                        // Show overlay in ready state immediately (transparent background)
+                        overlayManager.ShowReady()
 
                         // Start recording with level update callback
                         let onLevelUpdate level =
@@ -101,6 +101,10 @@ let main argv =
                     | Some state ->
                         try
                             Logger.info "Stopping recording..."
+
+                            // Show transcribing state IMMEDIATELY (before stopping recording)
+                            overlayManager.ShowTranscribing()
+
                             // Stop recording
                             let recording = AudioRecorder.stopRecording state
                             currentRecording <- None
@@ -114,11 +118,8 @@ let main argv =
                                 | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
                                 | None -> ()
                             else
-                                // Show transcribing state
-                                Logger.info "Starting transcription..."
-                                overlayManager.ShowTranscribing()
-
                                 // Transcribe the audio
+                                Logger.info "Starting transcription..."
                                 let transcription =
                                     whisperService.Transcribe(recording.Samples)
                                     |> Async.RunSynchronously

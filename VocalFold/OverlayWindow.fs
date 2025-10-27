@@ -51,8 +51,9 @@ let GWL_EXSTYLE = -20
 // Overlay state
 type OverlayState =
     | Hidden
-    | Recording
-    | Transcribing
+    | Ready          // Overlay visible, waiting for recording to start
+    | Recording      // Recording and detecting voice
+    | Transcribing   // Processing transcription
     | Error
 
 type OverlayWindow() as this =
@@ -60,6 +61,7 @@ type OverlayWindow() as this =
 
     let mutable currentState = Hidden
     let mutable currentLevel = 0.0
+    let mutable hasVoiceActivity = false  // Track if voice has been detected
 
     // Visual elements
     let canvas = new Canvas(Width = 120.0, Height = 60.0)
@@ -71,6 +73,7 @@ type OverlayWindow() as this =
         Fill = new SolidColorBrush(Color.FromArgb(180uy, 30uy, 30uy, 30uy)) // Semi-transparent dark
     )
     let waveformBars = Array.init 5 (fun _ -> new Rectangle())
+    let transcribingDots = Array.init 3 (fun _ -> new Ellipse())
 
     // Animation timer
     let animationTimer = new DispatcherTimer(Interval = TimeSpan.FromMilliseconds(33.0)) // ~30 fps
@@ -96,6 +99,9 @@ type OverlayWindow() as this =
 
         // Create waveform bars
         this.createWaveformBars()
+
+        // Create transcribing dots (initially hidden)
+        this.createTranscribingDots()
 
         // Set content
         this.Content <- canvas
@@ -126,37 +132,57 @@ type OverlayWindow() as this =
 
             canvas.Children.Add(bar) |> ignore
 
+    member private this.createTranscribingDots() =
+        // Create 3 dots for transcribing animation - centered in the window
+        let dotSize = 8.0
+        let dotSpacing = 16.0
+        let totalWidth = (3.0 * dotSize) + (2.0 * dotSpacing)
+        let startX = (120.0 - totalWidth) / 2.0
+        let centerY = 30.0
+
+        for i in 0 .. 2 do
+            let dot = transcribingDots.[i]
+            dot.Width <- dotSize
+            dot.Height <- dotSize
+            dot.Fill <- Brushes.LimeGreen
+            dot.Visibility <- Visibility.Collapsed  // Hidden by default
+
+            let xPos = startX + float i * (dotSize + dotSpacing)
+            Canvas.SetLeft(dot, xPos)
+            Canvas.SetTop(dot, centerY - dotSize / 2.0)
+
+            canvas.Children.Add(dot) |> ignore
+
     member private this.updateAnimation() =
         match currentState with
         | Recording ->
-            // Animate waveform bars based on audio level
-            let random = Random()
-            for i in 0 .. 4 do
-                let bar = waveformBars.[i]
-                // Vary heights to create wave effect, with center bars taller
-                let centerBoost = if i = 2 then 1.3 elif i = 1 || i = 3 then 1.15 else 1.0
-                let targetHeight = (10.0 + (currentLevel * 35.0) + float (random.Next(5))) * centerBoost
+            // Only animate bars if voice is detected (threshold-based)
+            if hasVoiceActivity && currentLevel > 0.02 then
+                let random = Random()
+                for i in 0 .. 4 do
+                    let bar = waveformBars.[i]
+                    // Vary heights to create wave effect, with center bars taller
+                    let centerBoost = if i = 2 then 1.3 elif i = 1 || i = 3 then 1.15 else 1.0
+                    let targetHeight = (10.0 + (currentLevel * 35.0) + float (random.Next(5))) * centerBoost
 
-                // Smooth animation
-                let anim = DoubleAnimation(
-                    To = Nullable targetHeight,
-                    Duration = Duration(TimeSpan.FromMilliseconds(100.0)),
-                    EasingFunction = QuadraticEase(EasingMode = EasingMode.EaseOut)
-                )
-                bar.BeginAnimation(Rectangle.HeightProperty, anim)
+                    // Smooth animation
+                    let anim = DoubleAnimation(
+                        To = Nullable targetHeight,
+                        Duration = Duration(TimeSpan.FromMilliseconds(100.0)),
+                        EasingFunction = QuadraticEase(EasingMode = EasingMode.EaseOut)
+                    )
+                    bar.BeginAnimation(Rectangle.HeightProperty, anim)
 
         | Transcribing ->
-            // Gentle pulsing animation for all bars
-            for i in 0 .. 4 do
-                let bar = waveformBars.[i]
-                let pulseAnim = DoubleAnimation(
-                    From = Nullable 15.0,
-                    To = Nullable 25.0,
-                    Duration = Duration(TimeSpan.FromMilliseconds(600.0)),
-                    AutoReverse = true,
-                    RepeatBehavior = RepeatBehavior.Forever
-                )
-                bar.BeginAnimation(Rectangle.HeightProperty, pulseAnim)
+            // Animate dots moving up and down in a wave pattern
+            let time = DateTime.Now.TimeOfDay.TotalMilliseconds
+            for i in 0 .. 2 do
+                let dot = transcribingDots.[i]
+                let phase = float i * Math.PI / 3.0  // Offset each dot by 60 degrees
+                let offset = Math.Sin((time / 300.0) + phase) * 8.0  // Move up/down by 8 pixels
+                let centerY = 30.0
+
+                Canvas.SetTop(dot, centerY - 4.0 + offset)
 
         | _ -> ()
 
@@ -164,22 +190,49 @@ type OverlayWindow() as this =
         currentState <- state
         currentLevel <- defaultArg audioLevel 0.0
 
-        // Update colors based on state
+        // Reset voice activity flag when showing ready/recording state
+        if state = Ready || state = Recording then
+            hasVoiceActivity <- false
+
+        // Update colors and visibility based on state
         match state with
-        | Recording ->
-            // Blue for recording
-            waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.DodgerBlue)
+        | Ready ->
+            // Blue background appears immediately, but NO bars yet
             backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 30uy, 60uy, 120uy)) // Blue-tinted background
+            waveformBars |> Array.iter (fun bar ->
+                bar.Fill <- Brushes.DodgerBlue
+                bar.Visibility <- Visibility.Collapsed  // Hidden until voice detected
+                bar.Height <- 15.0  // Minimal height
+                bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
+            )
+            transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+
+        | Recording ->
+            // Bars become visible and animate when voice is detected
+            backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 30uy, 60uy, 120uy)) // Blue-tinted background
+            waveformBars |> Array.iter (fun bar ->
+                bar.Fill <- Brushes.DodgerBlue
+                bar.Visibility <- Visibility.Visible  // Now visible
+            )
+            transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
 
         | Transcribing ->
-            // Green for transcribing
-            waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.LimeGreen)
+            // Green background, hide bars and show animated dots
             backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 30uy, 120uy, 60uy)) // Green-tinted background
+            waveformBars |> Array.iter (fun bar ->
+                bar.Visibility <- Visibility.Collapsed
+                bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
+            )
+            transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Visible)
 
         | Error ->
             // Red for error
-            waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.Red)
             backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 120uy, 30uy, 30uy)) // Red-tinted background
+            waveformBars |> Array.iter (fun bar ->
+                bar.Fill <- Brushes.Red
+                bar.Visibility <- Visibility.Visible
+            )
+            transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
 
         | Hidden ->
             ()
@@ -191,21 +244,38 @@ type OverlayWindow() as this =
         if not this.IsVisible then
             this.Visibility <- Visibility.Visible
 
-        // Fade in
-        this.Opacity <- 0.0
-        let fadeIn = DoubleAnimation(
-            From = Nullable 0.0,
-            To = Nullable 1.0,
-            Duration = Duration(TimeSpan.FromMilliseconds(150.0))
-        )
-        this.BeginAnimation(Window.OpacityProperty, fadeIn)
+        // Immediate show for Ready state, fade in for others
+        if state = Ready then
+            this.Opacity <- 1.0
+            this.BeginAnimation(Window.OpacityProperty, null)  // Cancel any fade animation
+        else
+            this.Opacity <- 0.0
+            let fadeIn = DoubleAnimation(
+                From = Nullable 0.0,
+                To = Nullable 1.0,
+                Duration = Duration(TimeSpan.FromMilliseconds(150.0))
+            )
+            this.BeginAnimation(Window.OpacityProperty, fadeIn)
 
-        // Start animation timer
+        // Start animation timer for Recording and Transcribing states
         if state = Recording || state = Transcribing then
             animationTimer.Start()
+        else
+            animationTimer.Stop()
 
     member this.UpdateLevel(level: float) =
         currentLevel <- level
+
+        // Detect voice activity (threshold-based)
+        if level > 0.02 then
+            if not hasVoiceActivity then
+                hasVoiceActivity <- true
+                // Show bars when voice is detected in Ready state
+                if currentState = Ready then
+                    // Make bars visible without changing state
+                    waveformBars |> Array.iter (fun bar -> bar.Visibility <- Visibility.Visible)
+                    currentState <- Recording
+                    animationTimer.Start()
 
     member this.HideOverlay() =
         // Stop animation
@@ -256,6 +326,15 @@ type OverlayManager() =
         | None ->
             let window = OverlayWindow()
             overlayWindow <- Some window
+
+    member this.ShowReady() =
+        this.Initialize()
+        match overlayWindow with
+        | Some window ->
+            window.Dispatcher.Invoke(fun () ->
+                window.ShowOverlay(Ready, 0.0)
+            )
+        | None -> ()
 
     member this.ShowRecording() =
         this.Initialize()
