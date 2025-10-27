@@ -19,7 +19,18 @@ type RECT =
         val mutable Bottom: int
     end
 
-// P/Invoke for getting tray icon position and making window click-through
+// Define POINT structure for cursor position
+[<StructLayout(LayoutKind.Sequential)>]
+type POINT =
+    struct
+        val mutable X: int
+        val mutable Y: int
+    end
+
+// P/Invoke for getting cursor position and making window click-through
+[<DllImport("user32.dll", SetLastError = true)>]
+extern bool GetCursorPos(POINT& lpPoint)
+
 [<DllImport("user32.dll", SetLastError = true)>]
 extern bool GetWindowRect(IntPtr hWnd, RECT& lpRect)
 
@@ -51,24 +62,23 @@ type OverlayWindow() as this =
     let mutable currentLevel = 0.0
 
     // Visual elements
-    let canvas = new Canvas(Width = 200.0, Height = 200.0)
-    let microphoneGroup = new Canvas()
-    let waveformBars = Array.init 5 (fun _ -> new Rectangle())
-    let statusText = new TextBlock(
-        FontSize = 12.0,
-        Foreground = Brushes.White,
-        HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Bottom,
-        Margin = Thickness(0.0, 0.0, 0.0, 10.0)
+    let canvas = new Canvas(Width = 120.0, Height = 60.0)
+    let backgroundRect = new Rectangle(
+        Width = 120.0,
+        Height = 60.0,
+        RadiusX = 8.0,
+        RadiusY = 8.0,
+        Fill = new SolidColorBrush(Color.FromArgb(180uy, 30uy, 30uy, 30uy)) // Semi-transparent dark
     )
+    let waveformBars = Array.init 5 (fun _ -> new Rectangle())
 
     // Animation timer
     let animationTimer = new DispatcherTimer(Interval = TimeSpan.FromMilliseconds(33.0)) // ~30 fps
 
     do
         // Configure window
-        this.Width <- 200.0
-        this.Height <- 200.0
+        this.Width <- 120.0
+        this.Height <- 60.0
         this.WindowStyle <- WindowStyle.None
         this.ResizeMode <- ResizeMode.NoResize
         this.AllowsTransparency <- true
@@ -77,20 +87,15 @@ type OverlayWindow() as this =
         this.ShowInTaskbar <- false
         this.Title <- "VocalFold Overlay"
 
-        // Set initial position (will be updated to near tray)
-        this.Left <- SystemParameters.PrimaryScreenWidth - 250.0
-        this.Top <- SystemParameters.PrimaryScreenHeight - 250.0
+        // Set initial position (will be updated to cursor position)
+        this.Left <- SystemParameters.PrimaryScreenWidth / 2.0
+        this.Top <- SystemParameters.PrimaryScreenHeight / 2.0
 
-        // Create microphone icon
-        this.createMicrophoneIcon()
+        // Add background first
+        canvas.Children.Add(backgroundRect) |> ignore
 
         // Create waveform bars
         this.createWaveformBars()
-
-        // Add status text
-        Canvas.SetLeft(statusText, 100.0 - 30.0)
-        Canvas.SetTop(statusText, 170.0)
-        canvas.Children.Add(statusText) |> ignore
 
         // Set content
         this.Content <- canvas
@@ -98,62 +103,26 @@ type OverlayWindow() as this =
         // Animation timer tick
         animationTimer.Tick.Add(fun _ -> this.updateAnimation())
 
-    member private this.createMicrophoneIcon() =
-        // Create a stylized microphone icon
-        let micBody = new Ellipse(
-            Width = 40.0,
-            Height = 60.0,
-            Fill = Brushes.White,
-            Stroke = Brushes.White,
-            StrokeThickness = 3.0
-        )
-
-        let micStand = new Rectangle(
-            Width = 4.0,
-            Height = 30.0,
-            Fill = Brushes.White
-        )
-
-        let micBase = new Rectangle(
-            Width = 40.0,
-            Height = 6.0,
-            Fill = Brushes.White,
-            RadiusX = 3.0,
-            RadiusY = 3.0
-        )
-
-        // Position elements
-        Canvas.SetLeft(micBody, 80.0)
-        Canvas.SetTop(micBody, 40.0)
-
-        Canvas.SetLeft(micStand, 98.0)
-        Canvas.SetTop(micStand, 100.0)
-
-        Canvas.SetLeft(micBase, 80.0)
-        Canvas.SetTop(micBase, 130.0)
-
-        microphoneGroup.Children.Add(micBody) |> ignore
-        microphoneGroup.Children.Add(micStand) |> ignore
-        microphoneGroup.Children.Add(micBase) |> ignore
-
-        canvas.Children.Add(microphoneGroup) |> ignore
-
     member private this.createWaveformBars() =
-        // Create 5 vertical bars for audio visualization
-        let barWidth = 8.0
-        let barSpacing = 12.0
-        let startX = 60.0
+        // Create 5 vertical bars for audio visualization - centered in the compact window
+        let barWidth = 6.0
+        let barSpacing = 10.0
+        let totalWidth = (5.0 * barWidth) + (4.0 * barSpacing)
+        let startX = (120.0 - totalWidth) / 2.0  // Center horizontally
+        let centerY = 30.0  // Vertical center
 
         for i in 0 .. 4 do
             let bar = waveformBars.[i]
             bar.Width <- barWidth
-            bar.Height <- 10.0
-            bar.Fill <- Brushes.White
-            bar.RadiusX <- 2.0
-            bar.RadiusY <- 2.0
+            bar.Height <- 15.0  // Start with modest height
+            bar.Fill <- Brushes.DodgerBlue
+            bar.RadiusX <- 3.0
+            bar.RadiusY <- 3.0
 
-            Canvas.SetLeft(bar, startX + float i * barSpacing)
-            Canvas.SetTop(bar, 150.0)
+            // Position bars centered, growing from center
+            let xPos = startX + float i * (barWidth + barSpacing)
+            Canvas.SetLeft(bar, xPos)
+            Canvas.SetBottom(bar, centerY - (bar.Height / 2.0))
 
             canvas.Children.Add(bar) |> ignore
 
@@ -164,7 +133,9 @@ type OverlayWindow() as this =
             let random = Random()
             for i in 0 .. 4 do
                 let bar = waveformBars.[i]
-                let targetHeight = 10.0 + (currentLevel * 80.0) + float (random.Next(10))
+                // Vary heights to create wave effect, with center bars taller
+                let centerBoost = if i = 2 then 1.3 elif i = 1 || i = 3 then 1.15 else 1.0
+                let targetHeight = (10.0 + (currentLevel * 35.0) + float (random.Next(5))) * centerBoost
 
                 // Smooth animation
                 let anim = DoubleAnimation(
@@ -174,27 +145,18 @@ type OverlayWindow() as this =
                 )
                 bar.BeginAnimation(Rectangle.HeightProperty, anim)
 
-            // Pulse microphone
-            let pulseScale = 1.0 + (currentLevel * 0.2)
-            let scaleAnim = DoubleAnimation(
-                To = Nullable pulseScale,
-                Duration = Duration(TimeSpan.FromMilliseconds(200.0)),
-                AutoReverse = true
-            )
-            microphoneGroup.RenderTransform <- ScaleTransform(1.0, 1.0, 100.0, 100.0)
-            microphoneGroup.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim)
-            microphoneGroup.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim)
-
         | Transcribing ->
-            // Gentle pulsing animation
-            let pulseAnim = DoubleAnimation(
-                From = Nullable 0.8,
-                To = Nullable 1.0,
-                Duration = Duration(TimeSpan.FromMilliseconds(800.0)),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            )
-            this.BeginAnimation(Window.OpacityProperty, pulseAnim)
+            // Gentle pulsing animation for all bars
+            for i in 0 .. 4 do
+                let bar = waveformBars.[i]
+                let pulseAnim = DoubleAnimation(
+                    From = Nullable 15.0,
+                    To = Nullable 25.0,
+                    Duration = Duration(TimeSpan.FromMilliseconds(600.0)),
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever
+                )
+                bar.BeginAnimation(Rectangle.HeightProperty, pulseAnim)
 
         | _ -> ()
 
@@ -205,40 +167,25 @@ type OverlayWindow() as this =
         // Update colors based on state
         match state with
         | Recording ->
-            // Blue/white for recording
-            microphoneGroup.Children |> Seq.cast<Shape> |> Seq.iter (fun shape ->
-                shape.Fill <- Brushes.DodgerBlue
-                shape.Stroke <- Brushes.DodgerBlue
-            )
+            // Blue for recording
             waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.DodgerBlue)
-            statusText.Text <- "Recording..."
-            statusText.Foreground <- Brushes.DodgerBlue
+            backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 30uy, 60uy, 120uy)) // Blue-tinted background
 
         | Transcribing ->
             // Green for transcribing
-            microphoneGroup.Children |> Seq.cast<Shape> |> Seq.iter (fun shape ->
-                shape.Fill <- Brushes.LimeGreen
-                shape.Stroke <- Brushes.LimeGreen
-            )
             waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.LimeGreen)
-            statusText.Text <- "Transcribing..."
-            statusText.Foreground <- Brushes.LimeGreen
+            backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 30uy, 120uy, 60uy)) // Green-tinted background
 
         | Error ->
             // Red for error
-            microphoneGroup.Children |> Seq.cast<Shape> |> Seq.iter (fun shape ->
-                shape.Fill <- Brushes.Red
-                shape.Stroke <- Brushes.Red
-            )
             waveformBars |> Array.iter (fun bar -> bar.Fill <- Brushes.Red)
-            statusText.Text <- "Error"
-            statusText.Foreground <- Brushes.Red
+            backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 120uy, 30uy, 30uy)) // Red-tinted background
 
         | Hidden ->
             ()
 
-        // Position near tray (bottom-right of screen)
-        this.positionNearTray()
+        // Position at cursor
+        this.positionAtCursor()
 
         // Show window if not visible
         if not this.IsVisible then
@@ -249,12 +196,12 @@ type OverlayWindow() as this =
         let fadeIn = DoubleAnimation(
             From = Nullable 0.0,
             To = Nullable 1.0,
-            Duration = Duration(TimeSpan.FromMilliseconds(200.0))
+            Duration = Duration(TimeSpan.FromMilliseconds(150.0))
         )
         this.BeginAnimation(Window.OpacityProperty, fadeIn)
 
         // Start animation timer
-        if state = Recording then
+        if state = Recording || state = Transcribing then
             animationTimer.Start()
 
     member this.UpdateLevel(level: float) =
@@ -278,74 +225,18 @@ type OverlayWindow() as this =
 
         this.BeginAnimation(Window.OpacityProperty, fadeOut)
 
-    member private this.positionNearTray() =
-        // Try to find the actual tray icon position
-        // The system tray is part of the taskbar, usually at the bottom-right
-        // We'll try to find the taskbar and position near it
+    member private this.positionAtCursor() =
+        // Position window centered horizontally and slightly above the taskbar
+        let screenWidth = SystemParameters.PrimaryScreenWidth
+        let workArea = SystemParameters.WorkArea
 
-        let mutable rect = RECT()
+        // Center horizontally
+        this.Left <- (screenWidth - this.Width) / 2.0
 
-        // Try to find the taskbar window
-        let taskbarHandle = FindWindow("Shell_TrayWnd", null)
-
-        if taskbarHandle <> IntPtr.Zero && GetWindowRect(taskbarHandle, &rect) then
-            // Calculate taskbar position and dimensions
-            let taskbarLeft = float rect.Left
-            let taskbarTop = float rect.Top
-            let taskbarRight = float rect.Right
-            let taskbarBottom = float rect.Bottom
-            let taskbarWidth = taskbarRight - taskbarLeft
-            let taskbarHeight = taskbarBottom - taskbarTop
-
-            // Determine taskbar position (bottom, top, left, or right)
-            let workingArea = SystemParameters.WorkArea
-            let primaryWidth = SystemParameters.PrimaryScreenWidth
-            let primaryHeight = SystemParameters.PrimaryScreenHeight
-
-            // Get DPI scaling factor
-            let dpiScale = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX
-
-            if taskbarHeight < taskbarWidth then
-                // Horizontal taskbar (bottom or top)
-                if taskbarTop > workingArea.Top then
-                    // Taskbar at bottom
-                    this.Left <- workingArea.Right - this.Width - 20.0
-                    this.Top <- taskbarTop - this.Height - 10.0
-                else
-                    // Taskbar at top
-                    this.Left <- workingArea.Right - this.Width - 20.0
-                    this.Top <- taskbarBottom + 10.0
-            else
-                // Vertical taskbar (left or right)
-                if taskbarLeft > workingArea.Left then
-                    // Taskbar at right
-                    this.Left <- taskbarLeft - this.Width - 10.0
-                    this.Top <- workingArea.Bottom - this.Height - 20.0
-                else
-                    // Taskbar at left
-                    this.Left <- taskbarRight + 10.0
-                    this.Top <- workingArea.Bottom - this.Height - 20.0
-        else
-            // Fallback to default bottom-right position if we can't find taskbar
-            let workingArea = SystemParameters.WorkArea
-            this.Left <- workingArea.Right - this.Width - 20.0
-            this.Top <- workingArea.Bottom - this.Height - 20.0
-
-        // Ensure window is within screen bounds (handle multi-monitor edge cases)
-        let screenLeft = SystemParameters.VirtualScreenLeft
-        let screenTop = SystemParameters.VirtualScreenTop
-        let screenWidth = SystemParameters.VirtualScreenWidth
-        let screenHeight = SystemParameters.VirtualScreenHeight
-
-        // Clamp position to screen bounds
-        if this.Left < screenLeft then
-            this.Left <- screenLeft
-        if this.Top < screenTop then
-            this.Top <- screenTop
-        if this.Left + this.Width > screenLeft + screenWidth then
-            this.Left <- screenLeft + screenWidth - this.Width
-        if this.Top + this.Height > screenTop + screenHeight then
-            this.Top <- screenTop + screenHeight - this.Height
+        // Position slightly above the taskbar
+        // WorkArea.Bottom gives us the bottom of the usable area (top of taskbar)
+        let offsetFromTaskbar = 10.0 // Pixels above the taskbar
+        this.Top <- workArea.Bottom - this.Height - offsetFromTaskbar
 
     override this.OnSourceInitialized(e: EventArgs) =
         base.OnSourceInitialized(e)
