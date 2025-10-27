@@ -194,7 +194,15 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
 
     // Recording stopped event
     waveIn.RecordingStopped.Add(fun _ ->
-        state.RecordingStopped.Set() |> ignore
+        try
+            state.RecordingStopped.Set() |> ignore
+        with
+        | :? ObjectDisposedException ->
+            // Event already disposed, ignore
+            ()
+        | ex ->
+            // Log other exceptions but don't crash
+            printfn "Warning: Error in RecordingStopped handler: %s" ex.Message
     )
 
     // Start recording
@@ -211,8 +219,13 @@ let stopRecording (state: RecordingState) : RecordingResult =
     // Wait for the recording to fully stop (max 2 seconds)
     state.RecordingStopped.WaitOne(2000) |> ignore
 
-    // Dispose of the wave input
+    // Dispose of the wave input first (this will stop any pending events)
     state.WaveIn.Dispose()
+
+    // Small delay to ensure all event handlers have finished executing
+    System.Threading.Thread.Sleep(50)
+
+    // Now safe to dispose the ManualResetEvent
     state.RecordingStopped.Dispose()
 
     let totalSamples = state.RecordedSamples.ToArray()
