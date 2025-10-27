@@ -10,9 +10,9 @@
     <Compile Include="WinAPI.fs" />
     <Compile Include="AudioRecorder.fs" />
     <Compile Include="TranscriptionService.fs" />
+    <Compile Include="Settings.fs" />
     <Compile Include="TextInput.fs" />
     <Compile Include="HotkeyManager.fs" />
-    <Compile Include="Settings.fs" />
     <Compile Include="SettingsDialog.fs" />
     <Compile Include="TrayIcon.fs" />
     <Compile Include="OverlayWindow.fs" />

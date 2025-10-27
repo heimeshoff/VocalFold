@@ -132,22 +132,18 @@ let main argv =
                                     | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
                                     | None -> ()
                                 else
+                                    // Hide overlay BEFORE typing so input goes to the correct window
+                                    Logger.debug "Hiding overlay before typing"
+                                    overlayManager.Hide()
+
+                                    // Small delay to let the previous window regain focus
+                                    System.Threading.Thread.Sleep(100)
+
                                     // Type the transcribed text
                                     Logger.info "Typing transcribed text..."
-                                    TextInput.typeText transcription
+                                    TextInput.typeTextWithSettings transcription currentSettings
                                     Logger.info "Text typing completed"
-
-                                    // Hide overlay after a short delay
-                                    async {
-                                        try
-                                            do! Async.Sleep(500)
-                                            Logger.debug "Hiding overlay after delay"
-                                            overlayManager.Hide()
-                                            Logger.info "Transcription flow completed successfully"
-                                        with
-                                        | ex ->
-                                            Logger.logException ex "Error in async overlay hide"
-                                    } |> Async.Start
+                                    Logger.info "Transcription flow completed successfully"
 
                         with
                         | ex ->

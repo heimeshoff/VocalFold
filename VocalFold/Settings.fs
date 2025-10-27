@@ -5,6 +5,48 @@ open System.IO
 open System.Text.Json
 open System.Text.Json.Serialization
 
+/// Typing speed configuration
+type TypingSpeed =
+    | Fast      // 5ms delay
+    | Normal    // 10ms delay
+    | Slow      // 20ms delay
+    | Custom of int  // Custom delay in ms
+
+/// Get the delay in milliseconds for a typing speed
+let getTypingDelay (speed: TypingSpeed) : int =
+    match speed with
+    | Fast -> 5
+    | Normal -> 10
+    | Slow -> 20
+    | Custom ms -> ms
+
+/// Parse typing speed from string
+let parseTypingSpeed (str: string) : TypingSpeed =
+    // Handle null or empty string
+    if String.IsNullOrEmpty(str) then
+        Normal
+    else
+        match str.ToLowerInvariant() with
+        | "fast" -> Fast
+        | "slow" -> Slow
+        | s when s.StartsWith("custom:") ->
+            let parts = s.Split(':')
+            if parts.Length = 2 then
+                match Int32.TryParse(parts.[1]) with
+                | (true, ms) -> Custom ms
+                | _ -> Normal
+            else
+                Normal
+        | _ -> Normal
+
+/// Convert typing speed to string
+let typingSpeedToString (speed: TypingSpeed) : string =
+    match speed with
+    | Fast -> "fast"
+    | Normal -> "normal"
+    | Slow -> "slow"
+    | Custom ms -> sprintf "custom:%d" ms
+
 /// Application settings
 type AppSettings = {
     /// Virtual key code for the hotkey (e.g., 0x20 for Space)
@@ -26,6 +68,10 @@ type AppSettings = {
     /// Maximum recording duration in seconds (0 = no limit)
     [<JsonPropertyName("recordingDuration")>]
     RecordingDuration: int
+
+    /// Typing speed configuration (stored as string in JSON)
+    [<JsonPropertyName("typingSpeed")>]
+    TypingSpeedStr: string
 }
 
 /// Default settings
@@ -35,7 +81,12 @@ let defaultSettings = {
     IsEnabled = true
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
+    TypingSpeedStr = "normal"  // Default to normal typing speed
 }
+
+/// Get the typing speed from settings
+let getTypingSpeed (settings: AppSettings) : TypingSpeed =
+    parseTypingSpeed settings.TypingSpeedStr
 
 /// Get the settings directory path
 let private getSettingsDirectory () =
@@ -66,8 +117,16 @@ let load () : AppSettings =
                 Logger.warning "Invalid hotkey key in settings, using defaults"
                 defaultSettings
             else
+                // Ensure TypingSpeedStr has a valid value (handle null from old settings files)
+                let normalizedSettings =
+                    if String.IsNullOrEmpty(settings.TypingSpeedStr) then
+                        Logger.info "TypingSpeed not set in settings file, defaulting to 'normal'"
+                        { settings with TypingSpeedStr = "normal" }
+                    else
+                        settings
+
                 Logger.info (sprintf "Settings loaded from: %s" settingsPath)
-                settings
+                normalizedSettings
         else
             Logger.info "Settings file not found, using defaults"
             defaultSettings

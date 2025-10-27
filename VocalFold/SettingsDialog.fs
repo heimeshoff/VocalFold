@@ -15,7 +15,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     let form = new Form(
         Text = "VocalFold Settings",
         Width = 500,
-        Height = 300,
+        Height = 400,
         StartPosition = FormStartPosition.CenterScreen,
         FormBorderStyle = FormBorderStyle.FixedDialog,
         MaximizeBox = false,
@@ -113,17 +113,64 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     modelGroupBox.Controls.Add(modelCombo)
     modelGroupBox.Controls.Add(modelNote)
 
+    // === Typing Speed Section ===
+    let typingGroupBox = new GroupBox(
+        Text = "Typing Speed",
+        Location = Point(20, 220),
+        Size = Size(440, 90)
+    )
+
+    let typingLabel = new Label(
+        Text = "Character typing speed:",
+        Location = Point(15, 25),
+        AutoSize = true
+    )
+
+    let fastRadio = new RadioButton(
+        Text = "Fast (5ms delay)",
+        Location = Point(15, 50),
+        AutoSize = true,
+        Tag = "fast"
+    )
+
+    let normalRadio = new RadioButton(
+        Text = "Normal (10ms delay) - Recommended",
+        Location = Point(150, 50),
+        AutoSize = true,
+        Tag = "normal"
+    )
+
+    let slowRadio = new RadioButton(
+        Text = "Slow (20ms delay)",
+        Location = Point(340, 50),
+        AutoSize = true,
+        Tag = "slow"
+    )
+
+    // Set current selection based on settings
+    let currentTypingSpeed = Settings.getTypingSpeed currentSettings
+    match currentTypingSpeed with
+    | Settings.Fast -> fastRadio.Checked <- true
+    | Settings.Normal -> normalRadio.Checked <- true
+    | Settings.Slow -> slowRadio.Checked <- true
+    | Settings.Custom _ -> normalRadio.Checked <- true  // Default to normal for custom
+
+    typingGroupBox.Controls.Add(typingLabel)
+    typingGroupBox.Controls.Add(fastRadio)
+    typingGroupBox.Controls.Add(normalRadio)
+    typingGroupBox.Controls.Add(slowRadio)
+
     // === Buttons ===
     let okButton = new Button(
         Text = "Apply",
-        Location = Point(280, 220),
+        Location = Point(280, 320),
         Size = Size(80, 30),
         DialogResult = DialogResult.OK
     )
 
     let cancelButton = new Button(
         Text = "Cancel",
-        Location = Point(370, 220),
+        Location = Point(370, 320),
         Size = Size(80, 30),
         DialogResult = DialogResult.Cancel
     )
@@ -198,15 +245,23 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
             else
                 "Base"  // Default fallback
 
+        // Determine selected typing speed
+        let selectedTypingSpeed =
+            if fastRadio.Checked then "fast"
+            elif slowRadio.Checked then "slow"
+            else "normal"
+
         newSettings <-
             { newSettings with
                 ModelSize = selectedModel
+                TypingSpeedStr = selectedTypingSpeed
             }
     )
 
     // Add controls to form
     form.Controls.Add(hotkeyGroupBox)
     form.Controls.Add(modelGroupBox)
+    form.Controls.Add(typingGroupBox)
     form.Controls.Add(okButton)
     form.Controls.Add(cancelButton)
 
