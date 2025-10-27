@@ -73,8 +73,10 @@ type WhisperService(modelPath: string) =
             Logger.info "Transcribing audio with Whisper.NET..."
             let startTime = DateTime.Now
 
+            // Build processor without language specification to enable auto-detection
+            // This allows Whisper to transcribe in the original spoken language
             use processor = whisperFactory.CreateBuilder()
-                                .WithLanguage("en")
+                                .WithLanguage("auto")
                                 .Build()
 
             let mutable transcription = ""
