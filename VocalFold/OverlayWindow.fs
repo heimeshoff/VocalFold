@@ -331,50 +331,56 @@ type OverlayManager() =
         this.Initialize()
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.ShowOverlay(Ready, 0.0)
-            )
+            ) |> ignore
         | None -> ()
 
     member this.ShowRecording() =
         this.Initialize()
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.ShowOverlay(Recording, 0.0)
-            )
+            ) |> ignore
         | None -> ()
 
     member this.UpdateLevel(level: float) =
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.UpdateLevel(level)
-            )
+            ) |> ignore
         | None -> ()
 
     member this.ShowTranscribing() =
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.ShowOverlay(Transcribing)
-            )
+            ) |> ignore
         | None -> ()
 
     member this.ShowError() =
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.ShowOverlay(Error)
-            )
+            ) |> ignore
         | None -> ()
 
     member this.Hide() =
         match overlayWindow with
         | Some window ->
-            window.Dispatcher.Invoke(fun () ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
                 window.HideOverlay()
-            )
+            ) |> ignore
         | None -> ()
 
     member this.Cleanup() =

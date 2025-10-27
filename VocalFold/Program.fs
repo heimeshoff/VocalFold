@@ -102,13 +102,13 @@ let main argv =
                         try
                             Logger.info "Stopping recording..."
 
-                            // Show transcribing state IMMEDIATELY (before stopping recording)
-                            overlayManager.ShowTranscribing()
-
-                            // Stop recording
+                            // Stop recording first
                             let recording = AudioRecorder.stopRecording state
                             currentRecording <- None
                             Logger.info (sprintf "Recording stopped. Captured %d samples" recording.Samples.Length)
+
+                            // Show transcribing state IMMEDIATELY (non-blocking)
+                            overlayManager.ShowTranscribing()
 
                             // Check if we have any samples
                             if recording.Samples.Length = 0 then
@@ -118,37 +118,48 @@ let main argv =
                                 | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
                                 | None -> ()
                             else
-                                // Transcribe the audio
-                                Logger.info "Starting transcription..."
-                                let transcription =
-                                    whisperService.Transcribe(recording.Samples)
-                                    |> Async.RunSynchronously
+                                // Run transcription asynchronously on background thread
+                                async {
+                                    try
+                                        // Transcribe the audio
+                                        Logger.info "Starting transcription..."
+                                        let! transcription = whisperService.Transcribe(recording.Samples)
 
-                                Logger.info (sprintf "Transcription result: \"%s\"" transcription)
+                                        Logger.info (sprintf "Transcription result: \"%s\"" transcription)
 
-                                if String.IsNullOrWhiteSpace(transcription) then
-                                    Logger.warning "No speech detected in audio"
-                                    overlayManager.Hide()
-                                    match trayState with
-                                    | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
-                                    | None -> ()
-                                else
-                                    // Hide overlay BEFORE typing so input goes to the correct window
-                                    Logger.debug "Hiding overlay before typing"
-                                    overlayManager.Hide()
+                                        if String.IsNullOrWhiteSpace(transcription) then
+                                            Logger.warning "No speech detected in audio"
+                                            overlayManager.Hide()
+                                            match trayState with
+                                            | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
+                                            | None -> ()
+                                        else
+                                            // Hide overlay BEFORE typing so input goes to the correct window
+                                            Logger.debug "Hiding overlay before typing"
+                                            overlayManager.Hide()
 
-                                    // Small delay to let the previous window regain focus
-                                    System.Threading.Thread.Sleep(100)
+                                            // Small delay to let the previous window regain focus
+                                            do! Async.Sleep(100)
 
-                                    // Type the transcribed text
-                                    Logger.info "Typing transcribed text..."
-                                    TextInput.typeTextWithSettings transcription currentSettings
-                                    Logger.info "Text typing completed"
-                                    Logger.info "Transcription flow completed successfully"
+                                            // Type the transcribed text
+                                            Logger.info "Typing transcribed text..."
+                                            TextInput.typeTextWithSettings transcription currentSettings
+                                            Logger.info "Text typing completed"
+                                            Logger.info "Transcription flow completed successfully"
+                                    with
+                                    | ex ->
+                                        Logger.logException ex "Error during transcription"
+                                        overlayManager.ShowError()
+                                        do! Async.Sleep(1000)
+                                        overlayManager.Hide()
+                                        match trayState with
+                                        | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
+                                        | None -> ()
+                                } |> Async.Start  // Start on background thread, don't block
 
                         with
                         | ex ->
-                            Logger.logException ex "Error during transcription flow"
+                            Logger.logException ex "Error during recording stop"
                             currentRecording <- None
                             overlayManager.ShowError()
                             System.Threading.Thread.Sleep(1000)
