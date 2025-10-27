@@ -17,6 +17,10 @@ let uninstallKeyboardHook () : bool =
 let messageLoop () : unit =
     WinAPI.messageLoop()
 
+// Exit the Windows message loop
+let exitMessageLoop () : unit =
+    WinAPI.exitMessageLoop()
+
 // ===== Legacy Hotkey Functions (for backward compatibility) =====
 
 // Internal storage for the callback

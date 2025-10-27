@@ -139,10 +139,14 @@ let main argv =
 
                                     // Hide overlay after a short delay
                                     async {
-                                        do! Async.Sleep(500)
-                                        Logger.debug "Hiding overlay after delay"
-                                        overlayManager.Hide()
-                                        Logger.info "Transcription flow completed successfully"
+                                        try
+                                            do! Async.Sleep(500)
+                                            Logger.debug "Hiding overlay after delay"
+                                            overlayManager.Hide()
+                                            Logger.info "Transcription flow completed successfully"
+                                        with
+                                        | ex ->
+                                            Logger.logException ex "Error in async overlay hide"
                                     } |> Async.Start
 
                         with
@@ -169,7 +173,7 @@ let main argv =
             OnExit = fun () ->
                 Logger.info "User requested exit via tray icon"
                 shouldExit <- true
-                Application.Exit()
+                HotkeyManager.exitMessageLoop()
             OnToggleEnabled = fun enabled ->
                 isEnabled <- enabled
                 // Update and save settings

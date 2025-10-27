@@ -81,6 +81,9 @@ extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam
 [<DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)>]
 extern IntPtr GetModuleHandle(string lpModuleName)
 
+[<DllImport("user32.dll")>]
+extern void PostQuitMessage(int nExitCode)
+
 // Hotkey callback storage
 let mutable private hotkeyCallback: (unit -> unit) option = None
 
@@ -149,6 +152,11 @@ let messageLoop () =
             running <- false
 
     printfn "✓ Message loop exited"
+
+// Exit the message loop by posting WM_QUIT
+let exitMessageLoop () =
+    Logger.info "Posting WM_QUIT to message loop"
+    PostQuitMessage(0)
 
 // ===== Keyboard Hook Implementation =====
 
