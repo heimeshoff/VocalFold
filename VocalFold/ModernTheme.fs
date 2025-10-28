@@ -323,9 +323,17 @@ type SidebarItem(text: string, icon: string) as this =
             AutoSize = false,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Cursor = Cursors.Hand
         )
+
+        // Forward click events from the label to the panel
+        label.Click.Add(fun e -> this.RaiseClickEvent())
+
         this.Controls.Add(label)
+
+    member private this.RaiseClickEvent() =
+        this.OnClick(EventArgs.Empty)
 
     member this.Selected
         with get() = isSelected

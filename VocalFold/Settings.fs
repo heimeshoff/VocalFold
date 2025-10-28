@@ -153,7 +153,7 @@ let load () : AppSettings =
 
                 // Ensure KeywordReplacements is not null (handle old settings files)
                 let finalSettings =
-                    if isNull normalizedSettings.KeywordReplacements then
+                    if obj.ReferenceEquals(normalizedSettings.KeywordReplacements, null) then
                         Logger.info "KeywordReplacements not set in settings file, defaulting to empty list"
                         { normalizedSettings with KeywordReplacements = [] }
                     else

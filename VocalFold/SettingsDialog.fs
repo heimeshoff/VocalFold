@@ -270,27 +270,26 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     keywordsListCard.Controls.Add(keywordsListTitle)
 
     // DataGridView for keywords list
-    let keywordsGrid = new DataGridView(
-        Location = Point(0, 35),
-        Size = Size(580, 280),
-        Anchor = AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right ||| AnchorStyles.Bottom,
-        BackgroundColor = Colors.DarkBackground,
-        ForeColor = Colors.PrimaryText,
-        GridColor = Colors.BorderColor,
-        BorderStyle = BorderStyle.None,
-        AllowUserToAddRows = false,
-        AllowUserToDeleteRows = false,
-        AllowUserToResizeRows = false,
-        RowHeadersVisible = false,
-        SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        MultiSelect = false,
-        AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
-        ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-        ColumnHeadersHeight = 32,
-        RowTemplate = new DataGridViewRow(Height = 28),
-        EnableHeadersVisualStyles = false,
-        Font = new Font("Segoe UI", 9.5f)
-    )
+    let keywordsGrid = new DataGridView()
+    keywordsGrid.Location <- Point(0, 35)
+    keywordsGrid.Size <- Size(580, 240)
+    keywordsGrid.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
+    keywordsGrid.BackgroundColor <- Colors.DarkBackground
+    keywordsGrid.ForeColor <- Colors.PrimaryText
+    keywordsGrid.GridColor <- Colors.BorderColor
+    keywordsGrid.BorderStyle <- BorderStyle.None
+    keywordsGrid.AllowUserToAddRows <- false
+    keywordsGrid.AllowUserToDeleteRows <- false
+    keywordsGrid.AllowUserToResizeRows <- false
+    keywordsGrid.RowHeadersVisible <- false
+    keywordsGrid.SelectionMode <- DataGridViewSelectionMode.FullRowSelect
+    keywordsGrid.MultiSelect <- false
+    keywordsGrid.AutoSizeColumnsMode <- DataGridViewAutoSizeColumnsMode.Fill
+    keywordsGrid.ColumnHeadersHeightSizeMode <- DataGridViewColumnHeadersHeightSizeMode.DisableResizing
+    keywordsGrid.ColumnHeadersHeight <- 32
+    keywordsGrid.RowTemplate <- new DataGridViewRow(Height = 28)
+    keywordsGrid.EnableHeadersVisualStyles <- false
+    keywordsGrid.Font <- new Font("Segoe UI", 9.5f)
 
     // Configure DataGridView style
     keywordsGrid.DefaultCellStyle.BackColor <- Colors.CardBackground
@@ -308,7 +307,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         HeaderText = "Keyword",
         Name = "Keyword",
         ReadOnly = true,
-        FillWeight = 25.0f
+        FillWeight = 20.0f
     )
     keywordsGrid.Columns.Add(keywordCol) |> ignore
 
@@ -316,23 +315,23 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         HeaderText = "Replacement",
         Name = "Replacement",
         ReadOnly = true,
-        FillWeight = 40.0f
+        FillWeight = 30.0f
     )
     keywordsGrid.Columns.Add(replacementCol) |> ignore
 
     let caseSensitiveCol = new DataGridViewCheckBoxColumn(
-        HeaderText = "Case Sensitive",
+        HeaderText = "Case",
         Name = "CaseSensitive",
         ReadOnly = true,
-        FillWeight = 17.0f
+        FillWeight = 15.0f
     )
     keywordsGrid.Columns.Add(caseSensitiveCol) |> ignore
 
     let wholePhraseCol = new DataGridViewCheckBoxColumn(
-        HeaderText = "Whole Phrase",
+        HeaderText = "Whole Word",
         Name = "WholePhrase",
         ReadOnly = true,
-        FillWeight = 18.0f
+        FillWeight = 15.0f
     )
     keywordsGrid.Columns.Add(wholePhraseCol) |> ignore
 
@@ -355,50 +354,44 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     // Buttons for keyword management
     let addKeywordBtn = new ModernButton(
         Text = "Add",
-        Location = Point(0, 325),
-        Width = 90,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left
+        Location = Point(0, 290),
+        Width = 90
     )
     keywordsListCard.Controls.Add(addKeywordBtn)
 
     let editKeywordBtn = new ModernButton(
         Text = "Edit",
-        Location = Point(100, 325),
-        Width = 90,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left
+        Location = Point(100, 290),
+        Width = 90
     )
     keywordsListCard.Controls.Add(editKeywordBtn)
 
     let deleteKeywordBtn = new ModernButton(
         Text = "Delete",
-        Location = Point(200, 325),
-        Width = 90,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left
+        Location = Point(200, 290),
+        Width = 90
     )
     keywordsListCard.Controls.Add(deleteKeywordBtn)
 
     let importKeywordBtn = new ModernButton(
         Text = "Import",
-        Location = Point(300, 325),
-        Width = 90,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left
+        Location = Point(300, 290),
+        Width = 90
     )
     keywordsListCard.Controls.Add(importKeywordBtn)
 
     let exportKeywordBtn = new ModernButton(
         Text = "Export",
-        Location = Point(400, 325),
-        Width = 90,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left
+        Location = Point(400, 290),
+        Width = 90
     )
     keywordsListCard.Controls.Add(exportKeywordBtn)
 
     let addExamplesBtn = new Button(
         Text = "Add Examples",
-        Location = Point(500, 325),
+        Location = Point(500, 290),
         Width = 80,
         Height = 36,
-        Anchor = AnchorStyles.Bottom ||| AnchorStyles.Left,
         BackColor = Color.Transparent,
         ForeColor = Colors.PrimaryText,
         FlatStyle = FlatStyle.Flat,
