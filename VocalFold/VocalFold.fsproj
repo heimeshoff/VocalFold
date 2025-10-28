@@ -11,6 +11,7 @@
     <Compile Include="AudioRecorder.fs" />
     <Compile Include="TranscriptionService.fs" />
     <Compile Include="Settings.fs" />
+    <Compile Include="TextProcessor.fs" />
     <Compile Include="TextInput.fs" />
     <Compile Include="HotkeyManager.fs" />
     <Compile Include="ModernTheme.fs" />

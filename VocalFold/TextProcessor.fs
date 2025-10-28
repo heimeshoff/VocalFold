@@ -1,0 +1,116 @@
+module TextProcessor
+
+open System
+open System.Text.RegularExpressions
+
+/// Process transcribed text and apply keyword replacements
+/// Returns the processed text with all applicable keyword replacements applied
+let processTranscription (text: string) (replacements: Settings.KeywordReplacement list) : string =
+    try
+        // If no replacements or empty text, return original
+        if List.isEmpty replacements || String.IsNullOrEmpty(text) then
+            text
+        else
+            Logger.debug (sprintf "Processing text with %d keyword replacements" replacements.Length)
+
+            // Sort replacements by keyword length (longest first) to handle overlapping keywords
+            // This ensures "German email footer" is matched before "email" or "footer"
+            let sortedReplacements =
+                replacements
+                |> List.sortByDescending (fun r -> r.Keyword.Length)
+
+            // Apply each replacement
+            let mutable processedText = text
+            let mutable replacementCount = 0
+
+            for replacement in sortedReplacements do
+                if not (String.IsNullOrEmpty(replacement.Keyword)) then
+                    try
+                        let pattern =
+                            if replacement.WholePhrase then
+                                // Match only complete words/phrases (word boundaries)
+                                sprintf @"\b%s\b" (Regex.Escape(replacement.Keyword))
+                            else
+                                // Match anywhere
+                                Regex.Escape(replacement.Keyword)
+
+                        let regexOptions =
+                            if replacement.CaseSensitive then
+                                RegexOptions.None
+                            else
+                                RegexOptions.IgnoreCase
+
+                        let regex = new Regex(pattern, regexOptions)
+                        let matches = regex.Matches(processedText)
+
+                        if matches.Count > 0 then
+                            processedText <- regex.Replace(processedText, replacement.Replacement)
+                            replacementCount <- replacementCount + matches.Count
+                            Logger.debug (sprintf "Replaced %d occurrence(s) of '%s' with '%s'"
+                                matches.Count
+                                replacement.Keyword
+                                (if replacement.Replacement.Length > 50 then
+                                    replacement.Replacement.Substring(0, 47) + "..."
+                                 else
+                                    replacement.Replacement))
+                    with
+                    | ex ->
+                        Logger.warning (sprintf "Error applying replacement for keyword '%s': %s"
+                            replacement.Keyword ex.Message)
+                        // Continue with other replacements
+
+            if replacementCount > 0 then
+                Logger.info (sprintf "Applied %d keyword replacement(s) to transcription" replacementCount)
+            else
+                Logger.debug "No keyword replacements applied (no matches found)"
+
+            processedText
+    with
+    | ex ->
+        Logger.logException ex "Error in processTranscription, returning original text"
+        text  // Return original text on error
+
+/// Create a keyword replacement with default values
+let createKeywordReplacement (keyword: string) (replacement: string) : Settings.KeywordReplacement =
+    {
+        Keyword = keyword
+        Replacement = replacement
+        CaseSensitive = false
+        WholePhrase = true
+    }
+
+/// Validate a keyword replacement
+let validateKeywordReplacement (replacement: Settings.KeywordReplacement) : string option =
+    if String.IsNullOrWhiteSpace(replacement.Keyword) then
+        Some "Keyword cannot be empty"
+    elif String.IsNullOrEmpty(replacement.Replacement) then
+        Some "Replacement cannot be null (but can be empty for deletion)"
+    else
+        None
+
+/// Get example keyword replacements for documentation/testing
+let getExampleReplacements () : Settings.KeywordReplacement list =
+    [
+        // Punctuation shortcuts
+        { Keyword = "comma"; Replacement = ","; CaseSensitive = false; WholePhrase = true }
+        { Keyword = "period"; Replacement = "."; CaseSensitive = false; WholePhrase = true }
+        { Keyword = "question mark"; Replacement = "?"; CaseSensitive = false; WholePhrase = true }
+        { Keyword = "exclamation mark"; Replacement = "!"; CaseSensitive = false; WholePhrase = true }
+        { Keyword = "new line"; Replacement = "\n"; CaseSensitive = false; WholePhrase = true }
+
+        // Email signature example
+        {
+            Keyword = "German email footer"
+            Replacement = "Mit freundlichen Grüßen\nIhr VocalFold Team"
+            CaseSensitive = false
+            WholePhrase = true
+        }
+
+        // Code snippet example
+        {
+            Keyword = "main function"
+            Replacement = "let main argv =\n    printfn \"Hello, World!\"\n    0"
+            CaseSensitive = false
+            WholePhrase = true
+        }
+    ]
