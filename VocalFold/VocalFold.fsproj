@@ -13,6 +13,7 @@
     <Compile Include="Settings.fs" />
     <Compile Include="TextInput.fs" />
     <Compile Include="HotkeyManager.fs" />
+    <Compile Include="ModernTheme.fs" />
     <Compile Include="SettingsDialog.fs" />
     <Compile Include="TrayIcon.fs" />
     <Compile Include="OverlayWindow.fs" />

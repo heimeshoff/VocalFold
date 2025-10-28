@@ -3,6 +3,7 @@ module SettingsDialog
 open System
 open System.Windows.Forms
 open System.Drawing
+open ModernTheme
 
 /// Result of the settings dialog
 type DialogResult =
@@ -11,15 +12,19 @@ type DialogResult =
 
 /// Create and show the settings dialog
 let show (currentSettings: Settings.AppSettings) : DialogResult =
-    // Create the form
+    // Create the form with modern dark theme
     let form = new Form(
         Text = "VocalFold Settings",
-        Width = 500,
-        Height = 400,
+        Width = 950,
+        Height = 750,
+        MinimumSize = Size(900, 700),
         StartPosition = FormStartPosition.CenterScreen,
-        FormBorderStyle = FormBorderStyle.FixedDialog,
-        MaximizeBox = false,
-        MinimizeBox = false
+        FormBorderStyle = FormBorderStyle.Sizable,
+        MaximizeBox = true,
+        MinimizeBox = true,
+        BackColor = Colors.DarkBackground,
+        ForeColor = Colors.PrimaryText,
+        Font = new Font("Segoe UI", 10.0f)
     )
 
     // Track the new settings
@@ -28,62 +33,110 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     let mutable recordedModifiers = 0u
     let mutable recordedKey = 0u
 
-    // === Hotkey Section ===
-    let hotkeyGroupBox = new GroupBox(
-        Text = "Global Hotkey",
-        Location = Point(20, 20),
-        Size = Size(440, 120)
+    // === Sidebar Navigation ===
+    let sidebar = new Panel(
+        Width = 200,
+        Dock = DockStyle.Left,
+        BackColor = Colors.SidebarBackground
     )
 
-    let hotkeyLabel = new Label(
-        Text = "Current hotkey:",
-        Location = Point(15, 25),
-        AutoSize = true
+    // Add General item first (will be pushed down by title)
+    let generalItem = new SidebarItem("General", "")
+    generalItem.Dock <- DockStyle.Top
+    generalItem.Selected <- true
+    sidebar.Controls.Add(generalItem)
+
+    // Add title at the top (will push other items down)
+    let sidebarTitle = new Label(
+        Text = "VocalFold",
+        Font = new Font("Segoe UI Semibold", 14.0f, FontStyle.Bold),
+        ForeColor = Colors.PrimaryText,
+        AutoSize = false,
+        Height = 60,
+        Dock = DockStyle.Top,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Padding = Padding(20, 20, 0, 0),
+        BackColor = Color.Transparent
     )
+    sidebar.Controls.Add(sidebarTitle)
+
+    // === Main Content Area ===
+    let mainPanel = new Panel(
+        Dock = DockStyle.Fill,
+        BackColor = Colors.DarkBackground,
+        AutoScroll = true,
+        Padding = Padding(30, 20, 30, 20)
+    )
+
+    // Page title
+    let pageTitle = Helpers.createSectionHeader "General Settings"
+    pageTitle.Location <- Point(0, 0)
+    mainPanel.Controls.Add(pageTitle)
+
+    // === Hotkey Card ===
+    let hotkeyCard = new ModernCard()
+    hotkeyCard.Location <- Point(0, 50)
+    hotkeyCard.Size <- Size(600, 180)
+    hotkeyCard.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
+
+    let hotkeyCardTitle = new ModernLabel("Global Hotkey")
+    hotkeyCardTitle.Font <- new Font("Segoe UI", 12.0f, FontStyle.Bold)
+    hotkeyCardTitle.Location <- Point(0, 0)
+    hotkeyCard.Controls.Add(hotkeyCardTitle)
+
+    let hotkeyLabel = new ModernLabelSecondary("Current hotkey:")
+    hotkeyLabel.Location <- Point(0, 35)
+    hotkeyCard.Controls.Add(hotkeyLabel)
 
     let hotkeyDisplay = new Label(
         Text = Settings.getHotkeyDisplayName currentSettings,
-        Location = Point(15, 50),
-        Font = new Font(FontFamily.GenericMonospace, 12.0f, FontStyle.Bold),
+        Location = Point(0, 58),
+        Font = new Font("Consolas", 13.0f, FontStyle.Bold),
         AutoSize = true,
-        ForeColor = Color.DarkBlue
+        ForeColor = Colors.AccentBlue,
+        BackColor = Color.Transparent
     )
+    hotkeyCard.Controls.Add(hotkeyDisplay)
 
-    let recordButton = new Button(
+    let recordButton = new ModernButton(
         Text = "Record New Hotkey",
-        Location = Point(15, 80),
-        Size = Size(150, 25)
+        Location = Point(0, 100),
+        Width = 180
     )
+    hotkeyCard.Controls.Add(recordButton)
 
-    let instructionLabel = new Label(
-        Text = "Press the record button, then press your desired hotkey combination.",
-        Location = Point(175, 80),
-        Size = Size(250, 30),
-        ForeColor = Color.Gray
+    let instructionLabel = new ModernLabelSecondary(
+        "Press the record button, then press your desired hotkey combination."
     )
+    instructionLabel.Location <- Point(190, 106)
+    instructionLabel.MaximumSize <- Size(360, 0)
+    hotkeyCard.Controls.Add(instructionLabel)
 
-    hotkeyGroupBox.Controls.Add(hotkeyLabel)
-    hotkeyGroupBox.Controls.Add(hotkeyDisplay)
-    hotkeyGroupBox.Controls.Add(recordButton)
-    hotkeyGroupBox.Controls.Add(instructionLabel)
+    mainPanel.Controls.Add(hotkeyCard)
 
-    // === Model Size Section ===
-    let modelGroupBox = new GroupBox(
-        Text = "Whisper Model",
-        Location = Point(20, 150),
-        Size = Size(440, 60)
-    )
+    // === Model Size Card ===
+    let modelCard = new ModernCard()
+    modelCard.Location <- Point(0, 250)
+    modelCard.Size <- Size(600, 130)
+    modelCard.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
 
-    let modelLabel = new Label(
-        Text = "Model size:",
-        Location = Point(15, 25),
-        AutoSize = true
-    )
+    let modelCardTitle = new ModernLabel("Whisper Model")
+    modelCardTitle.Font <- new Font("Segoe UI", 12.0f, FontStyle.Bold)
+    modelCardTitle.Location <- Point(0, 0)
+    modelCard.Controls.Add(modelCardTitle)
+
+    let modelLabel = new ModernLabel("Model size:")
+    modelLabel.Location <- Point(0, 42)
+    modelCard.Controls.Add(modelLabel)
 
     let modelCombo = new ComboBox(
-        Location = Point(100, 22),
-        Size = Size(100, 25),
-        DropDownStyle = ComboBoxStyle.DropDownList
+        Location = Point(100, 40),
+        Size = Size(130, 30),
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        BackColor = Colors.CardBackground,
+        ForeColor = Colors.PrimaryText,
+        FlatStyle = FlatStyle.Flat,
+        Font = new Font("Segoe UI", 10.0f)
     )
 
     // Add model options as objects
@@ -101,51 +154,63 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         | Some idx -> idx
         | None -> 1  // Default to "Base"
 
-    let modelNote = new Label(
-        Text = "(Requires restart to take effect)",
-        Location = Point(210, 25),
-        AutoSize = true,
-        ForeColor = Color.Gray,
-        Font = new Font(FontFamily.GenericSansSerif, 8.0f)
-    )
+    modelCard.Controls.Add(modelCombo)
 
-    modelGroupBox.Controls.Add(modelLabel)
-    modelGroupBox.Controls.Add(modelCombo)
-    modelGroupBox.Controls.Add(modelNote)
-
-    // === Typing Speed Section ===
-    let typingGroupBox = new GroupBox(
-        Text = "Typing Speed",
-        Location = Point(20, 220),
-        Size = Size(440, 90)
+    let modelNote = new ModernLabelSecondary(
+        "Requires restart to take effect"
     )
+    modelNote.Location <- Point(0, 78)
+    modelCard.Controls.Add(modelNote)
 
-    let typingLabel = new Label(
-        Text = "Character typing speed:",
-        Location = Point(15, 25),
-        AutoSize = true
-    )
+    mainPanel.Controls.Add(modelCard)
+
+    // === Typing Speed Card ===
+    let typingCard = new ModernCard()
+    typingCard.Location <- Point(0, 400)
+    typingCard.Size <- Size(600, 190)
+    typingCard.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
+
+    let typingCardTitle = new ModernLabel("Typing Speed")
+    typingCardTitle.Font <- new Font("Segoe UI", 12.0f, FontStyle.Bold)
+    typingCardTitle.Location <- Point(0, 0)
+    typingCard.Controls.Add(typingCardTitle)
+
+    let typingLabel = new ModernLabelSecondary("Select the character typing speed:")
+    typingLabel.Location <- Point(0, 35)
+    typingCard.Controls.Add(typingLabel)
 
     let fastRadio = new RadioButton(
         Text = "Fast (5ms delay)",
-        Location = Point(15, 50),
+        Location = Point(0, 65),
         AutoSize = true,
-        Tag = "fast"
+        Tag = "fast",
+        ForeColor = Colors.PrimaryText,
+        BackColor = Color.Transparent,
+        Font = new Font("Segoe UI", 10.0f)
     )
+    typingCard.Controls.Add(fastRadio)
 
     let normalRadio = new RadioButton(
         Text = "Normal (10ms delay) - Recommended",
-        Location = Point(150, 50),
+        Location = Point(0, 95),
         AutoSize = true,
-        Tag = "normal"
+        Tag = "normal",
+        ForeColor = Colors.PrimaryText,
+        BackColor = Color.Transparent,
+        Font = new Font("Segoe UI", 10.0f)
     )
+    typingCard.Controls.Add(normalRadio)
 
     let slowRadio = new RadioButton(
         Text = "Slow (20ms delay)",
-        Location = Point(340, 50),
+        Location = Point(0, 125),
         AutoSize = true,
-        Tag = "slow"
+        Tag = "slow",
+        ForeColor = Colors.PrimaryText,
+        BackColor = Color.Transparent,
+        Font = new Font("Segoe UI", 10.0f)
     )
+    typingCard.Controls.Add(slowRadio)
 
     // Set current selection based on settings
     let currentTypingSpeed = Settings.getTypingSpeed currentSettings
@@ -155,28 +220,54 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     | Settings.Slow -> slowRadio.Checked <- true
     | Settings.Custom _ -> normalRadio.Checked <- true  // Default to normal for custom
 
-    typingGroupBox.Controls.Add(typingLabel)
-    typingGroupBox.Controls.Add(fastRadio)
-    typingGroupBox.Controls.Add(normalRadio)
-    typingGroupBox.Controls.Add(slowRadio)
+    mainPanel.Controls.Add(typingCard)
 
-    // === Buttons ===
-    let okButton = new Button(
-        Text = "Apply",
-        Location = Point(280, 320),
-        Size = Size(80, 30),
-        DialogResult = DialogResult.OK
+    // === Bottom Button Bar ===
+    let buttonBar = new Panel(
+        Height = 60,
+        Dock = DockStyle.Bottom,
+        BackColor = Colors.CardBackground,
+        Padding = Padding(30, 15, 30, 15)
     )
+
+    let okButton = new ModernButton(
+        Text = "Apply",
+        Width = 100,
+        Dock = DockStyle.Right
+    )
+    okButton.DialogResult <- DialogResult.OK
+    buttonBar.Controls.Add(okButton)
 
     let cancelButton = new Button(
         Text = "Cancel",
-        Location = Point(370, 320),
-        Size = Size(80, 30),
-        DialogResult = DialogResult.Cancel
+        Width = 100,
+        Height = 36,
+        Dock = DockStyle.Right,
+        BackColor = Color.Transparent,
+        ForeColor = Colors.PrimaryText,
+        FlatStyle = FlatStyle.Flat,
+        Font = new Font("Segoe UI", 10.0f, FontStyle.Regular),
+        Margin = Padding(0, 0, 15, 0),
+        UseCompatibleTextRendering = false,
+        TextAlign = ContentAlignment.MiddleCenter
     )
+    cancelButton.FlatAppearance.BorderColor <- Colors.BorderColor
+    cancelButton.FlatAppearance.BorderSize <- 1
+    cancelButton.DialogResult <- DialogResult.Cancel
+    buttonBar.Controls.Add(cancelButton)
 
     form.AcceptButton <- okButton
     form.CancelButton <- cancelButton
+
+    // Add all main panels to form
+    form.Controls.Add(mainPanel)
+    form.Controls.Add(sidebar)
+    form.Controls.Add(buttonBar)
+
+    // Enable Mica effect after form handle is created
+    form.Load.Add(fun _ ->
+        Helpers.enableMicaEffect form
+    )
 
     // === Event Handlers ===
 
@@ -187,8 +278,9 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
             recordedModifiers <- 0u
             recordedKey <- 0u
             recordButton.Text <- "Recording... (Press any key)"
-            recordButton.BackColor <- Color.LightCoral
+            recordButton.BackColor <- Colors.ErrorColor
             hotkeyDisplay.Text <- "..."
+            hotkeyDisplay.ForeColor <- Colors.WarningColor
             form.KeyPreview <- true
     )
 
@@ -227,8 +319,9 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
 
                     // Update display
                     hotkeyDisplay.Text <- Settings.getHotkeyDisplayName newSettings
+                    hotkeyDisplay.ForeColor <- Colors.AccentBlue
                     recordButton.Text <- "Record New Hotkey"
-                    recordButton.BackColor <- Control.DefaultBackColor
+                    recordButton.BackColor <- Colors.AccentBlue
                     isRecording <- false
                     form.KeyPreview <- false
 
@@ -257,13 +350,6 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                 TypingSpeedStr = selectedTypingSpeed
             }
     )
-
-    // Add controls to form
-    form.Controls.Add(hotkeyGroupBox)
-    form.Controls.Add(modelGroupBox)
-    form.Controls.Add(typingGroupBox)
-    form.Controls.Add(okButton)
-    form.Controls.Add(cancelButton)
 
     // Show dialog and return result
     let result = form.ShowDialog()
