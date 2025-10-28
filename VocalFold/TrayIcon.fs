@@ -3,7 +3,12 @@ module TrayIcon
 open System
 open System.Windows.Forms
 open System.Drawing
+open System.Runtime.InteropServices
 open Microsoft.Win32
+
+/// P/Invoke for setting foreground window (needed for proper context menu behavior)
+[<DllImport("user32.dll")>]
+extern bool SetForegroundWindow(IntPtr hWnd)
 
 /// Configuration for the tray icon
 type TrayConfig = {
@@ -186,7 +191,20 @@ let create (config: TrayConfig) : TrayState =
     contextMenu.Items.Add(separator2) |> ignore
     contextMenu.Items.Add(exitItem) |> ignore
 
-    notifyIcon.ContextMenuStrip <- contextMenu
+    // Handle right-click manually for proper positioning
+    notifyIcon.MouseClick.Add(fun e ->
+        if e.Button = MouseButtons.Right then
+            // Set foreground window BEFORE showing menu
+            // This is required for proper menu dismissal behavior
+            SetForegroundWindow(contextMenu.Handle) |> ignore
+
+            // Get cursor position
+            let cursorPosition = Cursor.Position
+
+            // Show the menu at cursor position
+            // This ensures the menu appears where the user clicked, with proper shadow alignment
+            contextMenu.Show(cursorPosition)
+    )
 
     // Double-click to toggle enabled state
     notifyIcon.DoubleClick.Add(fun _ ->
