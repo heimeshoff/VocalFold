@@ -25,34 +25,103 @@ type TrayState = {
     mutable IsEnabled: bool
 }
 
-/// Create a simple icon (can be replaced with a custom .ico file later)
-let createDefaultIcon () =
-    // Create a simple 16x16 bitmap with a microphone-like shape
-    let bitmap = new Bitmap(16, 16)
-    use g = Graphics.FromImage(bitmap)
-    g.Clear(Color.Transparent)
+/// Load icon from logo.png file with larger visual size
+let loadIconFromLogo () =
+    try
+        // Try to load logo.png from the application directory
+        let appPath = AppDomain.CurrentDomain.BaseDirectory
+        let logoPath = System.IO.Path.Combine(appPath, "logo.png")
 
-    // Draw a simple mic icon (circle with a line)
-    use brush = new SolidBrush(Color.White)
-    g.FillEllipse(brush, 6, 3, 4, 6)
-    g.FillRectangle(brush, 7, 9, 2, 3)
-    g.FillRectangle(brush, 5, 12, 6, 2)
+        if System.IO.File.Exists(logoPath) then
+            use originalBitmap = new Bitmap(logoPath)
+            // Use 64x64 for maximum visibility in tray (Windows will scale appropriately)
+            let resizedBitmap = new Bitmap(64, 64)
+            use g = Graphics.FromImage(resizedBitmap)
+            g.InterpolationMode <- System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic
+            g.SmoothingMode <- System.Drawing.Drawing2D.SmoothingMode.HighQuality
+            g.PixelOffsetMode <- System.Drawing.Drawing2D.PixelOffsetMode.HighQuality
+            g.CompositingQuality <- System.Drawing.Drawing2D.CompositingQuality.HighQuality
+            g.DrawImage(originalBitmap, 0, 0, 64, 64)
+            Icon.FromHandle(resizedBitmap.GetHicon())
+        else
+            // Fallback to simple icon if logo not found
+            let bitmap = new Bitmap(64, 64)
+            use g = Graphics.FromImage(bitmap)
+            g.Clear(Color.Transparent)
+            use brush = new SolidBrush(Color.White)
+            g.FillEllipse(brush, 24, 12, 16, 24)
+            g.FillRectangle(brush, 28, 36, 8, 12)
+            g.FillRectangle(brush, 20, 48, 24, 8)
+            Icon.FromHandle(bitmap.GetHicon())
+    with
+    | ex ->
+        eprintfn "Error loading logo: %s" ex.Message
+        // Fallback to simple icon
+        let bitmap = new Bitmap(64, 64)
+        use g = Graphics.FromImage(bitmap)
+        g.Clear(Color.Transparent)
+        use brush = new SolidBrush(Color.White)
+        g.FillEllipse(brush, 24, 12, 16, 24)
+        g.FillRectangle(brush, 28, 36, 8, 12)
+        g.FillRectangle(brush, 20, 48, 24, 8)
+        Icon.FromHandle(bitmap.GetHicon())
 
-    Icon.FromHandle(bitmap.GetHicon())
-
-/// Create a grayed-out version for disabled state
+/// Create a grayed-out version for disabled state with larger visual size
 let createDisabledIcon () =
-    let bitmap = new Bitmap(16, 16)
-    use g = Graphics.FromImage(bitmap)
-    g.Clear(Color.Transparent)
+    try
+        // Try to load logo.png and make it grayscale
+        let appPath = AppDomain.CurrentDomain.BaseDirectory
+        let logoPath = System.IO.Path.Combine(appPath, "logo.png")
 
-    // Draw grayed out version
-    use brush = new SolidBrush(Color.Gray)
-    g.FillEllipse(brush, 6, 3, 4, 6)
-    g.FillRectangle(brush, 7, 9, 2, 3)
-    g.FillRectangle(brush, 5, 12, 6, 2)
+        if System.IO.File.Exists(logoPath) then
+            use originalBitmap = new Bitmap(logoPath)
+            // Use 64x64 for maximum visibility in tray
+            let resizedBitmap = new Bitmap(64, 64)
+            use g = Graphics.FromImage(resizedBitmap)
+            g.InterpolationMode <- System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic
+            g.SmoothingMode <- System.Drawing.Drawing2D.SmoothingMode.HighQuality
+            g.PixelOffsetMode <- System.Drawing.Drawing2D.PixelOffsetMode.HighQuality
+            g.CompositingQuality <- System.Drawing.Drawing2D.CompositingQuality.HighQuality
 
-    Icon.FromHandle(bitmap.GetHicon())
+            // Create grayscale color matrix
+            let colorMatrix = new System.Drawing.Imaging.ColorMatrix(
+                [| [| 0.3f; 0.3f; 0.3f; 0.0f; 0.0f |]
+                   [| 0.59f; 0.59f; 0.59f; 0.0f; 0.0f |]
+                   [| 0.11f; 0.11f; 0.11f; 0.0f; 0.0f |]
+                   [| 0.0f; 0.0f; 0.0f; 0.5f; 0.0f |]  // Reduced alpha for disabled look
+                   [| 0.0f; 0.0f; 0.0f; 0.0f; 1.0f |] |]
+            )
+
+            use attributes = new System.Drawing.Imaging.ImageAttributes()
+            attributes.SetColorMatrix(colorMatrix)
+
+            g.DrawImage(originalBitmap,
+                        new Rectangle(0, 0, 64, 64),
+                        0, 0, originalBitmap.Width, originalBitmap.Height,
+                        GraphicsUnit.Pixel, attributes)
+            Icon.FromHandle(resizedBitmap.GetHicon())
+        else
+            // Fallback
+            let bitmap = new Bitmap(64, 64)
+            use g = Graphics.FromImage(bitmap)
+            g.Clear(Color.Transparent)
+            use brush = new SolidBrush(Color.Gray)
+            g.FillEllipse(brush, 24, 12, 16, 24)
+            g.FillRectangle(brush, 28, 36, 8, 12)
+            g.FillRectangle(brush, 20, 48, 24, 8)
+            Icon.FromHandle(bitmap.GetHicon())
+    with
+    | ex ->
+        eprintfn "Error loading disabled logo: %s" ex.Message
+        // Fallback
+        let bitmap = new Bitmap(64, 64)
+        use g = Graphics.FromImage(bitmap)
+        g.Clear(Color.Transparent)
+        use brush = new SolidBrush(Color.Gray)
+        g.FillEllipse(brush, 24, 12, 16, 24)
+        g.FillRectangle(brush, 28, 36, 8, 12)
+        g.FillRectangle(brush, 20, 48, 24, 8)
+        Icon.FromHandle(bitmap.GetHicon())
 
 /// Registry operations for Windows startup
 module Startup =
@@ -104,7 +173,7 @@ let create (config: TrayConfig) : TrayState =
     let notifyIcon = new NotifyIcon()
 
     // Set up the icon
-    let enabledIcon = createDefaultIcon()
+    let enabledIcon = loadIconFromLogo()
     let disabledIcon = createDisabledIcon()
 
     notifyIcon.Icon <- enabledIcon

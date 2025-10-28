@@ -53,16 +53,42 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     keywordsItem.Selected <- false
     sidebar.Controls.Add(keywordsItem)
 
-    // Add title at the top (will push other items down)
+    // Add logo image at the top
+    let logoPanel = new Panel(
+        Height = 120,
+        Dock = DockStyle.Top,
+        BackColor = Color.Transparent,
+        Padding = Padding(20, 20, 20, 10)
+    )
+
+    let logoPicture = new PictureBox(
+        SizeMode = PictureBoxSizeMode.Zoom,
+        Dock = DockStyle.Fill,
+        BackColor = Color.Transparent
+    )
+
+    // Try to load logo
+    try
+        let appPath = AppDomain.CurrentDomain.BaseDirectory
+        let logoPath = System.IO.Path.Combine(appPath, "logo.png")
+        if System.IO.File.Exists(logoPath) then
+            logoPicture.Image <- Image.FromFile(logoPath)
+    with
+    | ex -> eprintfn "Error loading logo for settings: %s" ex.Message
+
+    logoPanel.Controls.Add(logoPicture)
+    sidebar.Controls.Add(logoPanel)
+
+    // Add title below logo
     let sidebarTitle = new Label(
         Text = "VocalFold",
         Font = new Font("Segoe UI Semibold", 14.0f, FontStyle.Bold),
         ForeColor = Colors.PrimaryText,
         AutoSize = false,
-        Height = 60,
+        Height = 50,
         Dock = DockStyle.Top,
-        TextAlign = ContentAlignment.MiddleLeft,
-        Padding = Padding(20, 20, 0, 0),
+        TextAlign = ContentAlignment.MiddleCenter,
+        Padding = Padding(0, 10, 0, 0),
         BackColor = Color.Transparent
     )
     sidebar.Controls.Add(sidebarTitle)

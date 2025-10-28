@@ -7,6 +7,14 @@ echo VocalFold - Standalone Build
 echo ========================================
 echo.
 
+echo Converting logo.png to logo.ico...
+powershell -ExecutionPolicy Bypass -File "%~dp0convert-logo-to-ico.ps1"
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [WARNING] Could not convert logo to .ico format. Continuing anyway...
+)
+
 cd /d "%~dp0VocalFold"
 
 echo Cleaning previous builds...
