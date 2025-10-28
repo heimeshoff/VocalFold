@@ -28,9 +28,17 @@ let typeText (text: string) (delayMs: int) : unit =
                 let c = text.[i]
 
                 try
-                    // Use TextEntry for each character - handles Unicode properly
-                    simulator.Keyboard.TextEntry(c) |> ignore
-                    successCount <- successCount + 1
+                    // Handle newline characters by pressing Enter
+                    if c = '\n' || c = '\r' then
+                        // Skip \r if it's part of \r\n sequence
+                        if not (c = '\r' && i < text.Length - 1 && text.[i + 1] = '\n') then
+                            simulator.Keyboard.KeyPress(VirtualKeyCode.RETURN) |> ignore
+                            successCount <- successCount + 1
+                            Logger.debug "Pressed Enter key for newline"
+                    else
+                        // Use TextEntry for regular characters - handles Unicode properly
+                        simulator.Keyboard.TextEntry(c) |> ignore
+                        successCount <- successCount + 1
 
                     // Add delay between characters (except after the last one)
                     if i < text.Length - 1 && delayMs > 0 then
