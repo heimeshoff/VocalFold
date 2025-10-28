@@ -62,6 +62,7 @@ type OverlayWindow() as this =
     let mutable currentState = Hidden
     let mutable currentLevel = 0.0
     let mutable hasVoiceActivity = false  // Track if voice has been detected
+    let mutable spectrumData = Array.zeroCreate<float> 5  // Frequency spectrum for 5 bars
 
     // Visual elements
     let canvas = new Canvas(Width = 120.0, Height = 60.0)
@@ -115,20 +116,20 @@ type OverlayWindow() as this =
         let barSpacing = 10.0
         let totalWidth = (5.0 * barWidth) + (4.0 * barSpacing)
         let startX = (120.0 - totalWidth) / 2.0  // Center horizontally
-        let centerY = 30.0  // Vertical center
+        let centerY = 30.0  // Vertical center of 60px window
 
         for i in 0 .. 4 do
             let bar = waveformBars.[i]
             bar.Width <- barWidth
-            bar.Height <- 15.0  // Start with modest height
+            bar.Height <- 2.0  // Start with minimal height (slim line)
             bar.Fill <- Brushes.DodgerBlue
             bar.RadiusX <- 3.0
             bar.RadiusY <- 3.0
 
-            // Position bars centered, growing from center
+            // Position bars centered vertically, they will grow up and down from center
             let xPos = startX + float i * (barWidth + barSpacing)
             Canvas.SetLeft(bar, xPos)
-            Canvas.SetBottom(bar, centerY - (bar.Height / 2.0))
+            Canvas.SetTop(bar, centerY - (bar.Height / 2.0))  // Center vertically
 
             canvas.Children.Add(bar) |> ignore
 
@@ -156,22 +157,36 @@ type OverlayWindow() as this =
     member private this.updateAnimation() =
         match currentState with
         | Recording ->
-            // Only animate bars if voice is detected (threshold-based)
-            if hasVoiceActivity && currentLevel > 0.02 then
-                let random = Random()
-                for i in 0 .. 4 do
-                    let bar = waveformBars.[i]
-                    // Vary heights to create wave effect, with center bars taller
-                    let centerBoost = if i = 2 then 1.3 elif i = 1 || i = 3 then 1.15 else 1.0
-                    let targetHeight = (10.0 + (currentLevel * 35.0) + float (random.Next(5))) * centerBoost
+            // Animate bars based on spectrum data
+            // Use 90% of window height (60px), leaving 5% padding top and bottom
+            let windowHeight = 60.0
+            let maxHeight = windowHeight * 0.9  // 54px max
+            let minHeight = 2.0  // Slim line when silent
+            let centerY = windowHeight / 2.0  // 30px
 
-                    // Smooth animation
-                    let anim = DoubleAnimation(
-                        To = Nullable targetHeight,
-                        Duration = Duration(TimeSpan.FromMilliseconds(100.0)),
-                        EasingFunction = QuadraticEase(EasingMode = EasingMode.EaseOut)
-                    )
-                    bar.BeginAnimation(Rectangle.HeightProperty, anim)
+            for i in 0 .. 4 do
+                let bar = waveformBars.[i]
+                // Use spectrum data for each bar
+                let spectrumValue = spectrumData.[i]
+
+                // Map spectrum to height
+                let targetHeight = minHeight + (spectrumValue * (maxHeight - minHeight))
+
+                // Animate both height and position to keep centered
+                let heightAnim = DoubleAnimation(
+                    To = Nullable targetHeight,
+                    Duration = Duration(TimeSpan.FromMilliseconds(50.0)),
+                    EasingFunction = QuadraticEase(EasingMode = EasingMode.EaseOut)
+                )
+
+                let topAnim = DoubleAnimation(
+                    To = Nullable (centerY - targetHeight / 2.0),
+                    Duration = Duration(TimeSpan.FromMilliseconds(50.0)),
+                    EasingFunction = QuadraticEase(EasingMode = EasingMode.EaseOut)
+                )
+
+                bar.BeginAnimation(Rectangle.HeightProperty, heightAnim)
+                bar.BeginAnimation(Canvas.TopProperty, topAnim)
 
         | Transcribing ->
             // Animate dots moving up and down in a wave pattern
@@ -202,10 +217,12 @@ type OverlayWindow() as this =
             waveformBars |> Array.iter (fun bar ->
                 bar.Fill <- Brushes.DodgerBlue
                 bar.Visibility <- Visibility.Collapsed  // Hidden until voice detected
-                bar.Height <- 15.0  // Minimal height
+                bar.Height <- 2.0  // Start with minimal height (slim line)
                 bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
             )
             transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+            // Start animation timer in Ready state so it's running when bars appear
+            animationTimer.Start()
 
         | Recording ->
             // Bars become visible and animate when voice is detected
@@ -276,6 +293,15 @@ type OverlayWindow() as this =
                     waveformBars |> Array.iter (fun bar -> bar.Visibility <- Visibility.Visible)
                     currentState <- Recording
                     animationTimer.Start()
+
+    member this.UpdateSpectrum(spectrum: float32[]) =
+        // Update spectrum data for visualization
+        if spectrum.Length = 5 then
+            for i in 0 .. 4 do
+                spectrumData.[i] <- float spectrum.[i]
+            // Debug: Log spectrum values to see if we're receiving data
+            // Uncomment for debugging:
+            // Logger.debug (sprintf "Spectrum: [%.3f, %.3f, %.3f, %.3f, %.3f]" spectrum.[0] spectrum.[1] spectrum.[2] spectrum.[3] spectrum.[4])
 
     member this.HideOverlay() =
         // Stop animation
@@ -353,6 +379,15 @@ type OverlayManager() =
             // Use BeginInvoke for non-blocking UI update
             window.Dispatcher.BeginInvoke(fun () ->
                 window.UpdateLevel(level)
+            ) |> ignore
+        | None -> ()
+
+    member this.UpdateSpectrum(spectrum: float32[]) =
+        match overlayWindow with
+        | Some window ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
+                window.UpdateSpectrum(spectrum)
             ) |> ignore
         | None -> ()
 

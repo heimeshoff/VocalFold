@@ -68,11 +68,14 @@ let main argv =
                         // Show overlay in ready state immediately (transparent background)
                         overlayManager.ShowReady()
 
-                        // Start recording with level update callback
+                        // Start recording with level and spectrum update callbacks
                         let onLevelUpdate level =
                             overlayManager.UpdateLevel(float level)
 
-                        let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate)
+                        let onSpectrumUpdate spectrum =
+                            overlayManager.UpdateSpectrum(spectrum)
+
+                        let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate) (Some onSpectrumUpdate)
                         currentRecording <- Some state
                         Logger.info "Recording started successfully"
                     with

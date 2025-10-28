@@ -2,6 +2,7 @@ module AudioRecorder
 
 open System
 open NAudio.Wave
+open NAudio.Dsp
 open System.Collections.Generic
 
 // Result type for recording
@@ -21,6 +22,7 @@ type RecordingState = {
     mutable CurrentLevel: float32  // Current instantaneous level for visualization
     RecordingStopped: System.Threading.ManualResetEvent
     OnLevelUpdate: (float32 -> unit) option  // Callback for real-time level updates
+    OnSpectrumUpdate: (float32[] -> unit) option  // Callback for frequency spectrum (5 bands)
 }
 
 // List all available input devices
@@ -128,8 +130,90 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
         SampleRate = sampleRate
     }
 
+// Calculate frequency spectrum from audio samples (5 bands for 5 bars)
+let private calculateSpectrum (samples: float32[]) : float32[] =
+    // Debug: Check if we have actual audio data
+    let maxSample = if samples.Length > 0 then samples |> Array.map abs |> Array.max else 0.0f
+    Logger.debug (sprintf "calculateSpectrum called with %d samples, max amplitude: %.4f" samples.Length maxSample)
+
+    if samples.Length < 256 then
+        Logger.debug "Not enough samples for FFT (need 256)"
+        Array.zeroCreate 5
+    else
+        // Use 256 samples for FFT (must be power of 2)
+        let fftLength = 256
+        let fftBuffer = Array.zeroCreate<Complex> fftLength
+
+        // Copy samples to complex buffer (take last 256 samples)
+        let startIdx = max 0 (samples.Length - fftLength)
+        for i in 0 .. fftLength - 1 do
+            if startIdx + i < samples.Length then
+                fftBuffer.[i] <- Complex(X = samples.[startIdx + i], Y = 0.0f)
+
+        // Debug: Check what's in the FFT buffer before windowing
+        let bufferMax = fftBuffer |> Array.map (fun c -> abs c.X) |> Array.max
+        Logger.debug (sprintf "FFT buffer filled, max value before windowing: %.4f" bufferMax)
+
+        // Apply Hamming window to reduce spectral leakage
+        for i in 0 .. fftLength - 1 do
+            let window = float32 (0.54 - 0.46 * Math.Cos(2.0 * Math.PI * float i / float fftLength))
+            fftBuffer.[i] <- Complex(X = fftBuffer.[i].X * window, Y = 0.0f)
+
+        // Perform FFT
+        FastFourierTransform.FFT(true, int(Math.Log(float fftLength, 2.0)), fftBuffer)
+
+        // Divide spectrum into 5 frequency bands
+        // Human voice is typically 85-255 Hz (fundamental) + harmonics up to ~8kHz
+        // Sample rate is 16kHz, so Nyquist is 8kHz
+        // We'll focus on 0-8kHz range divided into 5 bands
+        let bands = Array.zeroCreate<float32> 5
+        let totalBins = fftLength / 2  // Only use first half (positive frequencies)
+
+        // Band ranges (in bins):
+        // Skip bin 0 (DC component) which is always very high
+        // Band 0: 62-250Hz (low bass/fundamental)
+        // Band 1: 250-750Hz (vowels low)
+        // Band 2: 750-1500Hz (vowels high)
+        // Band 3: 1500-3000Hz (consonants)
+        // Band 4: 3000-8000Hz (sibilants/high)
+        let bandRanges = [|(1, 4); (4, 12); (12, 24); (24, 48); (48, 128)|]
+
+        for bandIdx in 0 .. 4 do
+            let (startBin, endBin) = bandRanges.[bandIdx]
+            let mutable bandEnergy = 0.0
+            let mutable binsInBand = 0
+
+            for bin in startBin .. min (endBin - 1) (totalBins - 1) do
+                let magnitude = Math.Sqrt(float fftBuffer.[bin].X * float fftBuffer.[bin].X + float fftBuffer.[bin].Y * float fftBuffer.[bin].Y)
+                bandEnergy <- bandEnergy + magnitude
+                binsInBand <- binsInBand + 1
+
+            // Average and normalize
+            if binsInBand > 0 then
+                bands.[bandIdx] <- float32 (bandEnergy / float binsInBand)
+
+            // Debug: Log band calculation
+            Logger.debug (sprintf "Band %d: %d bins, energy=%.4f, avg=%.4f" bandIdx binsInBand bandEnergy bands.[bandIdx])
+
+        // Find max value for auto-scaling
+        let maxBand = bands |> Array.max
+
+        // Normalize to 0-1 range with aggressive scaling
+        // Use a much smaller divisor and add boost
+        let normalized =
+            if maxBand > 0.0001f then
+                bands |> Array.map (fun x -> min 1.0f ((x / maxBand) * 1.5f))  // Auto-scale + 50% boost
+            else
+                Array.zeroCreate 5
+
+        // Debug: Log raw and normalized values
+        Logger.debug (sprintf "FFT Bands (raw): [%.4f, %.4f, %.4f, %.4f, %.4f] max=%.4f" bands.[0] bands.[1] bands.[2] bands.[3] bands.[4] maxBand)
+        Logger.debug (sprintf "FFT Bands (norm): [%.3f, %.3f, %.3f, %.3f, %.3f]" normalized.[0] normalized.[1] normalized.[2] normalized.[3] normalized.[4])
+
+        normalized
+
 // Start recording (non-blocking, returns RecordingState)
-let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) option) : RecordingState =
+let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) option) (onSpectrumUpdate: (float32[] -> unit) option) : RecordingState =
     match deviceNumber with
     | Some d -> printfn "🎤 Recording started from device %d..." d
     | None -> printfn "🎤 Recording started from default device..."
@@ -165,6 +249,7 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
         CurrentLevel = 0.0f
         RecordingStopped = new System.Threading.ManualResetEvent(false)
         OnLevelUpdate = onLevelUpdate
+        OnSpectrumUpdate = onSpectrumUpdate
     }
 
     // Data available event handler
@@ -189,6 +274,26 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
         // Call level update callback if provided
         match state.OnLevelUpdate with
         | Some callback -> callback bufferMaxLevel
+        | None -> ()
+
+        // Calculate and send frequency spectrum if callback provided
+        match state.OnSpectrumUpdate with
+        | Some callback ->
+            // Use a rolling window of recent samples for FFT
+            let recentSamples =
+                if state.RecordedSamples.Count >= 512 then
+                    let startIdx = state.RecordedSamples.Count - 512
+                    let range = state.RecordedSamples.GetRange(startIdx, 512)
+                    range.ToArray()
+                else
+                    state.RecordedSamples.ToArray()
+
+            // Debug: Check sample data
+            let sampleMax = if recentSamples.Length > 0 then recentSamples |> Array.map abs |> Array.max else 0.0f
+            Logger.debug (sprintf "Passing %d samples to FFT, max: %.4f" recentSamples.Length sampleMax)
+
+            let spectrum = calculateSpectrum recentSamples
+            callback spectrum
         | None -> ()
     )
 
