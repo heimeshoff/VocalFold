@@ -17,8 +17,8 @@ Windows desktop app that transcribes voice to text using Whisper.NET AI. Press C
 3. **TASKS.md** - Implementation roadmap
 
 ### Current Status
-**Phase**: Phase 9 - Voice Activity Visualization (COMPLETED)
-**Last Completed**: Phase 9: Voice Activity Visualization
+**Phase**: Phase 11 - Keyword Replacement System (COMPLETED)
+**Last Completed**: Phase 11: Keyword Replacement System
 **Next Task**: All phases complete! Ready for testing and refinement.
 
 ### Important Constraints

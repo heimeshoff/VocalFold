@@ -137,6 +137,9 @@ let main argv =
                                             | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
                                             | None -> ()
                                         else
+                                            // Process keyword replacements
+                                            let processedText = TextProcessor.processTranscription transcription currentSettings.KeywordReplacements
+
                                             // Hide overlay BEFORE typing so input goes to the correct window
                                             Logger.debug "Hiding overlay before typing"
                                             overlayManager.Hide()
@@ -144,9 +147,9 @@ let main argv =
                                             // Small delay to let the previous window regain focus
                                             do! Async.Sleep(100)
 
-                                            // Type the transcribed text
+                                            // Type the processed text
                                             Logger.info "Typing transcribed text..."
-                                            TextInput.typeTextWithSettings transcription currentSettings
+                                            TextInput.typeTextWithSettings processedText currentSettings
                                             Logger.info "Text typing completed"
                                             Logger.info "Transcription flow completed successfully"
                                     with

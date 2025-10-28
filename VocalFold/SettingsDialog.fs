@@ -32,6 +32,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     let mutable isRecording = false
     let mutable recordedModifiers = 0u
     let mutable recordedKey = 0u
+    let mutable currentPage = "General"
 
     // === Sidebar Navigation ===
     let sidebar = new Panel(
@@ -45,6 +46,12 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     generalItem.Dock <- DockStyle.Top
     generalItem.Selected <- true
     sidebar.Controls.Add(generalItem)
+
+    // Add Keywords item
+    let keywordsItem = new SidebarItem("Keywords", "")
+    keywordsItem.Dock <- DockStyle.Top
+    keywordsItem.Selected <- false
+    sidebar.Controls.Add(keywordsItem)
 
     // Add title at the top (will push other items down)
     let sidebarTitle = new Label(
@@ -222,6 +229,182 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
 
     mainPanel.Controls.Add(typingCard)
 
+    // === Keywords Panel (initially hidden) ===
+    let keywordsPanel = new Panel(
+        Dock = DockStyle.Fill,
+        BackColor = Colors.DarkBackground,
+        AutoScroll = true,
+        Padding = Padding(30, 20, 30, 20),
+        Visible = false
+    )
+
+    // Keywords page title
+    let keywordsTitle = Helpers.createSectionHeader "Keyword Replacements"
+    keywordsTitle.Location <- Point(0, 0)
+    keywordsPanel.Controls.Add(keywordsTitle)
+
+    // Description card
+    let descCard = new ModernCard()
+    descCard.Location <- Point(0, 50)
+    descCard.Size <- Size(600, 90)
+    descCard.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
+
+    let descLabel = new ModernLabelSecondary(
+        "Configure keywords that will be automatically replaced in transcriptions.\n" +
+        "Example: Say \"comma\" and it will be replaced with \",\""
+    )
+    descLabel.Location <- Point(0, 0)
+    descLabel.MaximumSize <- Size(580, 0)
+    descCard.Controls.Add(descLabel)
+    keywordsPanel.Controls.Add(descCard)
+
+    // Keywords list card
+    let keywordsListCard = new ModernCard()
+    keywordsListCard.Location <- Point(0, 160)
+    keywordsListCard.Size <- Size(600, 400)
+    keywordsListCard.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right ||| AnchorStyles.Bottom
+
+    let keywordsListTitle = new ModernLabel("Configured Keywords")
+    keywordsListTitle.Font <- new Font("Segoe UI", 12.0f, FontStyle.Bold)
+    keywordsListTitle.Location <- Point(0, 0)
+    keywordsListCard.Controls.Add(keywordsListTitle)
+
+    // DataGridView for keywords list
+    let keywordsGrid = new DataGridView()
+    keywordsGrid.Location <- Point(0, 35)
+    keywordsGrid.Size <- Size(580, 240)
+    keywordsGrid.Anchor <- AnchorStyles.Top ||| AnchorStyles.Left ||| AnchorStyles.Right
+    keywordsGrid.BackgroundColor <- Colors.DarkBackground
+    keywordsGrid.ForeColor <- Colors.PrimaryText
+    keywordsGrid.GridColor <- Colors.BorderColor
+    keywordsGrid.BorderStyle <- BorderStyle.None
+    keywordsGrid.AllowUserToAddRows <- false
+    keywordsGrid.AllowUserToDeleteRows <- false
+    keywordsGrid.AllowUserToResizeRows <- false
+    keywordsGrid.RowHeadersVisible <- false
+    keywordsGrid.SelectionMode <- DataGridViewSelectionMode.FullRowSelect
+    keywordsGrid.MultiSelect <- false
+    keywordsGrid.AutoSizeColumnsMode <- DataGridViewAutoSizeColumnsMode.Fill
+    keywordsGrid.ColumnHeadersHeightSizeMode <- DataGridViewColumnHeadersHeightSizeMode.DisableResizing
+    keywordsGrid.ColumnHeadersHeight <- 32
+    keywordsGrid.RowTemplate <- new DataGridViewRow(Height = 28)
+    keywordsGrid.EnableHeadersVisualStyles <- false
+    keywordsGrid.Font <- new Font("Segoe UI", 9.5f)
+
+    // Configure DataGridView style
+    keywordsGrid.DefaultCellStyle.BackColor <- Colors.CardBackground
+    keywordsGrid.DefaultCellStyle.ForeColor <- Colors.PrimaryText
+    keywordsGrid.DefaultCellStyle.SelectionBackColor <- Colors.AccentBlue
+    keywordsGrid.DefaultCellStyle.SelectionForeColor <- Color.White
+    keywordsGrid.DefaultCellStyle.Padding <- Padding(5, 2, 5, 2)
+    keywordsGrid.ColumnHeadersDefaultCellStyle.BackColor <- Colors.DarkBackground
+    keywordsGrid.ColumnHeadersDefaultCellStyle.ForeColor <- Colors.SecondaryText
+    keywordsGrid.ColumnHeadersDefaultCellStyle.Font <- new Font("Segoe UI", 9.5f, FontStyle.Bold)
+    keywordsGrid.ColumnHeadersDefaultCellStyle.Padding <- Padding(5, 4, 5, 4)
+
+    // Add columns
+    let keywordCol = new DataGridViewTextBoxColumn(
+        HeaderText = "Keyword",
+        Name = "Keyword",
+        ReadOnly = true,
+        FillWeight = 20.0f
+    )
+    keywordsGrid.Columns.Add(keywordCol) |> ignore
+
+    let replacementCol = new DataGridViewTextBoxColumn(
+        HeaderText = "Replacement",
+        Name = "Replacement",
+        ReadOnly = true,
+        FillWeight = 30.0f
+    )
+    keywordsGrid.Columns.Add(replacementCol) |> ignore
+
+    let caseSensitiveCol = new DataGridViewCheckBoxColumn(
+        HeaderText = "Case",
+        Name = "CaseSensitive",
+        ReadOnly = true,
+        FillWeight = 15.0f
+    )
+    keywordsGrid.Columns.Add(caseSensitiveCol) |> ignore
+
+    let wholePhraseCol = new DataGridViewCheckBoxColumn(
+        HeaderText = "Whole Word",
+        Name = "WholePhrase",
+        ReadOnly = true,
+        FillWeight = 15.0f
+    )
+    keywordsGrid.Columns.Add(wholePhraseCol) |> ignore
+
+    // Function to refresh keywords grid
+    let refreshKeywordsGrid () =
+        keywordsGrid.Rows.Clear()
+        for kw in newSettings.KeywordReplacements do
+            let displayReplacement =
+                if kw.Replacement.Length > 50 then
+                    kw.Replacement.Substring(0, 47) + "..."
+                else
+                    kw.Replacement.Replace("\n", "\\n").Replace("\r", "")
+            keywordsGrid.Rows.Add(kw.Keyword, displayReplacement, kw.CaseSensitive, kw.WholePhrase) |> ignore
+
+    // Initial load
+    refreshKeywordsGrid()
+
+    keywordsListCard.Controls.Add(keywordsGrid)
+
+    // Buttons for keyword management
+    let addKeywordBtn = new ModernButton(
+        Text = "Add",
+        Location = Point(0, 290),
+        Width = 90
+    )
+    keywordsListCard.Controls.Add(addKeywordBtn)
+
+    let editKeywordBtn = new ModernButton(
+        Text = "Edit",
+        Location = Point(100, 290),
+        Width = 90
+    )
+    keywordsListCard.Controls.Add(editKeywordBtn)
+
+    let deleteKeywordBtn = new ModernButton(
+        Text = "Delete",
+        Location = Point(200, 290),
+        Width = 90
+    )
+    keywordsListCard.Controls.Add(deleteKeywordBtn)
+
+    let importKeywordBtn = new ModernButton(
+        Text = "Import",
+        Location = Point(300, 290),
+        Width = 90
+    )
+    keywordsListCard.Controls.Add(importKeywordBtn)
+
+    let exportKeywordBtn = new ModernButton(
+        Text = "Export",
+        Location = Point(400, 290),
+        Width = 90
+    )
+    keywordsListCard.Controls.Add(exportKeywordBtn)
+
+    let addExamplesBtn = new Button(
+        Text = "Add Examples",
+        Location = Point(500, 290),
+        Width = 80,
+        Height = 36,
+        BackColor = Color.Transparent,
+        ForeColor = Colors.PrimaryText,
+        FlatStyle = FlatStyle.Flat,
+        Font = new Font("Segoe UI", 9.0f, FontStyle.Regular),
+        UseCompatibleTextRendering = false,
+        TextAlign = ContentAlignment.MiddleCenter
+    )
+    addExamplesBtn.FlatAppearance.BorderColor <- Colors.BorderColor
+    addExamplesBtn.FlatAppearance.BorderSize <- 1
+    keywordsListCard.Controls.Add(addExamplesBtn)
+
+    keywordsPanel.Controls.Add(keywordsListCard)
+
     // === Bottom Button Bar ===
     let buttonBar = new Panel(
         Height = 60,
@@ -261,6 +444,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
 
     // Add all main panels to form
     form.Controls.Add(mainPanel)
+    form.Controls.Add(keywordsPanel)
     form.Controls.Add(sidebar)
     form.Controls.Add(buttonBar)
 
@@ -270,6 +454,248 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     )
 
     // === Event Handlers ===
+
+    // Helper function to switch pages
+    let switchToPage (pageName: string) =
+        currentPage <- pageName
+        generalItem.Selected <- (pageName = "General")
+        keywordsItem.Selected <- (pageName = "Keywords")
+        mainPanel.Visible <- (pageName = "General")
+        keywordsPanel.Visible <- (pageName = "Keywords")
+
+    // Navigation event handlers
+    generalItem.Click.Add(fun _ -> switchToPage "General")
+    keywordsItem.Click.Add(fun _ -> switchToPage "Keywords")
+
+    // Helper function to show keyword edit dialog
+    let showKeywordDialog (title: string) (keyword: Settings.KeywordReplacement option) : Settings.KeywordReplacement option =
+        use dlg = new Form(
+            Text = title,
+            Width = 500,
+            Height = 380,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            BackColor = Colors.DarkBackground,
+            ForeColor = Colors.PrimaryText,
+            Font = new Font("Segoe UI", 10.0f)
+        )
+
+        let mutable result: Settings.KeywordReplacement option = None
+
+        // Keyword input
+        let keywordLabel = new ModernLabel("Keyword (what you say):")
+        keywordLabel.Location <- Point(20, 20)
+        dlg.Controls.Add(keywordLabel)
+
+        let keywordTextBox = new TextBox(
+            Location = Point(20, 48),
+            Size = Size(440, 25),
+            BackColor = Colors.CardBackground,
+            ForeColor = Colors.PrimaryText,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Segoe UI", 10.0f)
+        )
+        dlg.Controls.Add(keywordTextBox)
+
+        // Replacement input
+        let replacementLabel = new ModernLabel("Replacement (what to type):")
+        replacementLabel.Location <- Point(20, 85)
+        dlg.Controls.Add(replacementLabel)
+
+        let replacementTextBox = new TextBox(
+            Location = Point(20, 113),
+            Size = Size(440, 80),
+            BackColor = Colors.CardBackground,
+            ForeColor = Colors.PrimaryText,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font("Segoe UI", 10.0f),
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            AcceptsReturn = true
+        )
+        dlg.Controls.Add(replacementTextBox)
+
+        // Case sensitive checkbox
+        let caseSensitiveCheck = new CheckBox(
+            Text = "Case Sensitive",
+            Location = Point(20, 205),
+            AutoSize = true,
+            ForeColor = Colors.PrimaryText,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 10.0f)
+        )
+        dlg.Controls.Add(caseSensitiveCheck)
+
+        // Whole phrase checkbox
+        let wholePhraseCheck = new CheckBox(
+            Text = "Match Whole Phrase Only",
+            Location = Point(20, 235),
+            AutoSize = true,
+            ForeColor = Colors.PrimaryText,
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 10.0f),
+            Checked = true
+        )
+        dlg.Controls.Add(wholePhraseCheck)
+
+        // Load existing keyword data if editing
+        match keyword with
+        | Some kw ->
+            keywordTextBox.Text <- kw.Keyword
+            replacementTextBox.Text <- kw.Replacement
+            caseSensitiveCheck.Checked <- kw.CaseSensitive
+            wholePhraseCheck.Checked <- kw.WholePhrase
+        | None -> ()
+
+        // OK button
+        let okBtn = new ModernButton(
+            Text = "OK",
+            Location = Point(360, 280),
+            Width = 100
+        )
+        okBtn.Click.Add(fun _ ->
+            if String.IsNullOrWhiteSpace(keywordTextBox.Text) then
+                MessageBox.Show("Keyword cannot be empty", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning) |> ignore
+            else
+                result <- Some {
+                    Keyword = keywordTextBox.Text.Trim()
+                    Replacement = replacementTextBox.Text
+                    CaseSensitive = caseSensitiveCheck.Checked
+                    WholePhrase = wholePhraseCheck.Checked
+                }
+                dlg.DialogResult <- DialogResult.OK
+        )
+        dlg.Controls.Add(okBtn)
+
+        // Cancel button
+        let cancelBtn = new Button(
+            Text = "Cancel",
+            Location = Point(250, 280),
+            Width = 100,
+            Height = 36,
+            BackColor = Color.Transparent,
+            ForeColor = Colors.PrimaryText,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI", 10.0f)
+        )
+        cancelBtn.FlatAppearance.BorderColor <- Colors.BorderColor
+        cancelBtn.FlatAppearance.BorderSize <- 1
+        cancelBtn.Click.Add(fun _ -> dlg.DialogResult <- DialogResult.Cancel)
+        dlg.Controls.Add(cancelBtn)
+
+        dlg.AcceptButton <- okBtn
+        dlg.CancelButton <- cancelBtn
+
+        if dlg.ShowDialog() = DialogResult.OK then
+            result
+        else
+            None
+
+    // Add keyword button
+    addKeywordBtn.Click.Add(fun _ ->
+        match showKeywordDialog "Add Keyword" None with
+        | Some kw ->
+            newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ [kw] }
+            refreshKeywordsGrid()
+        | None -> ()
+    )
+
+    // Edit keyword button
+    editKeywordBtn.Click.Add(fun _ ->
+        if keywordsGrid.SelectedRows.Count > 0 then
+            let index = keywordsGrid.SelectedRows.[0].Index
+            let currentKw = newSettings.KeywordReplacements.[index]
+            match showKeywordDialog "Edit Keyword" (Some currentKw) with
+            | Some kw ->
+                let updatedList =
+                    newSettings.KeywordReplacements
+                    |> List.mapi (fun i k -> if i = index then kw else k)
+                newSettings <- { newSettings with KeywordReplacements = updatedList }
+                refreshKeywordsGrid()
+            | None -> ()
+        else
+            MessageBox.Show("Please select a keyword to edit", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+    )
+
+    // Delete keyword button
+    deleteKeywordBtn.Click.Add(fun _ ->
+        if keywordsGrid.SelectedRows.Count > 0 then
+            let index = keywordsGrid.SelectedRows.[0].Index
+            let kw = newSettings.KeywordReplacements.[index]
+            let confirmResult = MessageBox.Show(
+                sprintf "Are you sure you want to delete the keyword \"%s\"?" kw.Keyword,
+                "Confirm Delete",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question
+            )
+            if confirmResult = DialogResult.Yes then
+                let updatedList =
+                    newSettings.KeywordReplacements
+                    |> List.mapi (fun i k -> (i, k))
+                    |> List.filter (fun (i, _) -> i <> index)
+                    |> List.map snd
+                newSettings <- { newSettings with KeywordReplacements = updatedList }
+                refreshKeywordsGrid()
+        else
+            MessageBox.Show("Please select a keyword to delete", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+    )
+
+    // Import keywords button
+    importKeywordBtn.Click.Add(fun _ ->
+        use openDialog = new OpenFileDialog(
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            Title = "Import Keywords"
+        )
+        if openDialog.ShowDialog() = DialogResult.OK then
+            try
+                let json = System.IO.File.ReadAllText(openDialog.FileName)
+                let imported = System.Text.Json.JsonSerializer.Deserialize<Settings.KeywordReplacement list>(json)
+                newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ imported }
+                refreshKeywordsGrid()
+                MessageBox.Show(sprintf "Imported %d keywords" imported.Length, "Import Successful", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+            with
+            | ex ->
+                MessageBox.Show(sprintf "Error importing keywords: %s" ex.Message, "Import Error", MessageBoxButtons.OK, MessageBoxIcon.Error) |> ignore
+    )
+
+    // Export keywords button
+    exportKeywordBtn.Click.Add(fun _ ->
+        if newSettings.KeywordReplacements.IsEmpty then
+            MessageBox.Show("No keywords to export", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+        else
+            use saveDialog = new SaveFileDialog(
+                Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+                Title = "Export Keywords",
+                FileName = "keywords.json"
+            )
+            if saveDialog.ShowDialog() = DialogResult.OK then
+                try
+                    let jsonOptions = System.Text.Json.JsonSerializerOptions()
+                    jsonOptions.WriteIndented <- true
+                    let json = System.Text.Json.JsonSerializer.Serialize(newSettings.KeywordReplacements, jsonOptions)
+                    System.IO.File.WriteAllText(saveDialog.FileName, json)
+                    MessageBox.Show(sprintf "Exported %d keywords" newSettings.KeywordReplacements.Length, "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+                with
+                | ex ->
+                    MessageBox.Show(sprintf "Error exporting keywords: %s" ex.Message, "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error) |> ignore
+    )
+
+    // Add examples button
+    addExamplesBtn.Click.Add(fun _ ->
+        let examples = TextProcessor.getExampleReplacements()
+        let confirmResult = MessageBox.Show(
+            sprintf "This will add %d example keywords. Continue?" examples.Length,
+            "Add Examples",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question
+        )
+        if confirmResult = DialogResult.Yes then
+            newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ examples }
+            refreshKeywordsGrid()
+            MessageBox.Show(sprintf "Added %d example keywords" examples.Length, "Examples Added", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+    )
 
     // Record button click
     recordButton.Click.Add(fun _ ->

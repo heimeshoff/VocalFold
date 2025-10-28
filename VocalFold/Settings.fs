@@ -5,6 +5,26 @@ open System.IO
 open System.Text.Json
 open System.Text.Json.Serialization
 
+/// Keyword replacement configuration
+[<CLIMutable>]
+type KeywordReplacement = {
+    /// The keyword to listen for (what user says)
+    [<JsonPropertyName("keyword")>]
+    Keyword: string
+
+    /// What to type instead
+    [<JsonPropertyName("replacement")>]
+    Replacement: string
+
+    /// Match case exactly?
+    [<JsonPropertyName("caseSensitive")>]
+    CaseSensitive: bool
+
+    /// Match only complete words/phrases?
+    [<JsonPropertyName("wholePhrase")>]
+    WholePhrase: bool
+}
+
 /// Typing speed configuration
 type TypingSpeed =
     | Fast      // 5ms delay
@@ -48,6 +68,7 @@ let typingSpeedToString (speed: TypingSpeed) : string =
     | Custom ms -> sprintf "custom:%d" ms
 
 /// Application settings
+[<CLIMutable>]
 type AppSettings = {
     /// Virtual key code for the hotkey (e.g., 0x20 for Space)
     [<JsonPropertyName("hotkeyKey")>]
@@ -72,6 +93,10 @@ type AppSettings = {
     /// Typing speed configuration (stored as string in JSON)
     [<JsonPropertyName("typingSpeed")>]
     TypingSpeedStr: string
+
+    /// Keyword replacements list
+    [<JsonPropertyName("keywordReplacements")>]
+    KeywordReplacements: KeywordReplacement list
 }
 
 /// Default settings
@@ -82,6 +107,7 @@ let defaultSettings = {
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed
+    KeywordReplacements = []  // No keyword replacements by default
 }
 
 /// Get the typing speed from settings
@@ -125,8 +151,17 @@ let load () : AppSettings =
                     else
                         settings
 
+                // Ensure KeywordReplacements is not null (handle old settings files)
+                let finalSettings =
+                    if obj.ReferenceEquals(normalizedSettings.KeywordReplacements, null) then
+                        Logger.info "KeywordReplacements not set in settings file, defaulting to empty list"
+                        { normalizedSettings with KeywordReplacements = [] }
+                    else
+                        normalizedSettings
+
                 Logger.info (sprintf "Settings loaded from: %s" settingsPath)
-                normalizedSettings
+                Logger.info (sprintf "Loaded %d keyword replacements" finalSettings.KeywordReplacements.Length)
+                finalSettings
         else
             Logger.info "Settings file not found, using defaults"
             defaultSettings
