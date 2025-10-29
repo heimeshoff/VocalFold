@@ -58,3 +58,5 @@ nunit-*.xml
 .idea
 .claude/settings.local.json
 VocalFold.WebUI/node_modules
+deploy
+*.fs.js

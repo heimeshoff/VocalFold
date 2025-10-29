@@ -2,8 +2,8 @@ import { isNullOrEmpty, join, printf, toText } from "../../fable_modules/fable-l
 import { createElement } from "react";
 import React from "react";
 import { React_createDisposable_3A5B6456, useReact_useEffect_7331F961 } from "../../fable_modules/Feliz.2.7.0/React.fs.js";
-import { AppSettings, Msg } from "../Types.fs.js";
-import { CardProps, card } from "./Card.fs.js";
+import { AppSettings, Msg } from "../Types.js";
+import { CardProps, card } from "./Card.js";
 import { createObj } from "../../fable_modules/fable-library-js.4.25.0/Util.js";
 import { singleton, append, delay, toList } from "../../fable_modules/fable-library-js.4.25.0/Seq.js";
 import { Interop_reactApi } from "../../fable_modules/Feliz.2.7.0/./Interop.fs.js";

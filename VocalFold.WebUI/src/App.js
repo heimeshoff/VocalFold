@@ -1,7 +1,7 @@
-import { Toast, KeywordReplacement, AppSettings, ToastType, Msg, Model, LoadingState$1, Page } from "./Types.fs.js";
+import { Toast, KeywordReplacement, AppSettings, ToastType, Msg, Model, LoadingState$1, Page } from "./Types.js";
 import { map, filter, cons, length, item, ofArray, singleton, empty } from "../fable_modules/fable-library-js.4.25.0/List.js";
 import { Cmd_OfPromise_either, Cmd_none, Cmd_batch } from "../fable_modules/Fable.Elmish.4.0.0/cmd.fs.js";
-import { addExampleKeywords, deleteKeyword, addKeyword, updateKeyword, getStatus, updateSettings, getSettings } from "./Api.fs.js";
+import { addExampleKeywords, deleteKeyword, addKeyword, updateKeyword, getStatus, updateSettings, getSettings } from "./Api.js";
 import { FSharpResult$2 } from "../fable_modules/fable-library-js.4.25.0/Result.js";
 import { printf, toText } from "../fable_modules/fable-library-js.4.25.0/String.js";
 import { newGuid } from "../fable_modules/fable-library-js.4.25.0/Guid.js";
@@ -10,9 +10,9 @@ import React from "react";
 import { createObj } from "../fable_modules/fable-library-js.4.25.0/Util.js";
 import { Interop_reactApi } from "../fable_modules/Feliz.2.7.0/./Interop.fs.js";
 import { singleton as singleton_1, delay, toList } from "../fable_modules/fable-library-js.4.25.0/Seq.js";
-import { view as view_1 } from "./Components/GeneralSettings.fs.js";
-import { view as view_2 } from "./Components/KeywordManager.fs.js";
-import { view as view_3 } from "./Components/Dashboard.fs.js";
+import { view as view_1 } from "./Components/GeneralSettings.js";
+import { view as view_2 } from "./Components/KeywordManager.js";
+import { view as view_3 } from "./Components/Dashboard.js";
 import { React_useElmish_Z6C327F2E } from "../fable_modules/Feliz.UseElmish.2.4.0/./UseElmish.fs.js";
 import { ProgramModule_mkProgram } from "../fable_modules/Feliz.UseElmish.2.4.0/../Fable.Elmish.4.0.0/program.fs.js";
 import { createRoot } from "react-dom/client";
@@ -26,7 +26,7 @@ export function init() {
 }
 
 export function update(msg, model) {
-    let msg_2, msg_5, msg_12, msg_11, copyOfStruct;
+    let msg_1, msg_3, msg_10, msg_9, copyOfStruct;
     switch (msg.tag) {
         case 0:
             return [new Model(msg.fields[0], model.Settings, model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), Cmd_none()];
@@ -34,29 +34,25 @@ export function update(msg, model) {
             return [new Model(model.CurrentPage, new LoadingState$1(1, []), model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), Cmd_OfPromise_either(getSettings, undefined, (Item) => (new Msg(2, [Item])), (ex) => (new Msg(2, [new FSharpResult$2(1, [ex.message])])))];
         case 2:
             if (msg.fields[0].tag === 1) {
-                return [new Model(model.CurrentPage, new LoadingState$1(3, [msg.fields[0].fields[0]]), model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), (msg_2 = (new Msg(20, [toText(printf("Failed to load settings: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch_1) => {
-                    dispatch_1(msg_2);
+                return [new Model(model.CurrentPage, new LoadingState$1(3, [msg.fields[0].fields[0]]), model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), (msg_1 = (new Msg(20, [toText(printf("Failed to load settings: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch) => {
+                    dispatch(msg_1);
                 }))];
             }
             else {
-                return [new Model(model.CurrentPage, new LoadingState$1(2, [msg.fields[0].fields[0]]), model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), singleton((dispatch) => {
-                    dispatch(new Msg(20, ["Settings loaded", new ToastType(0, [])]));
-                })];
+                return [new Model(model.CurrentPage, new LoadingState$1(2, [msg.fields[0].fields[0]]), model.Status, model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), Cmd_none()];
             }
         case 3:
             return [model, Cmd_OfPromise_either(updateSettings, msg.fields[0], (Item_1) => (new Msg(4, [Item_1])), (ex_1) => (new Msg(4, [new FSharpResult$2(1, [ex_1.message])])))];
         case 4:
             if (msg.fields[0].tag === 1) {
-                return [model, (msg_5 = (new Msg(20, [toText(printf("Failed to save settings: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch_4) => {
-                    dispatch_4(msg_5);
+                return [model, (msg_3 = (new Msg(20, [toText(printf("Failed to save settings: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch_2) => {
+                    dispatch_2(msg_3);
                 }))];
             }
             else {
-                return [model, Cmd_batch(ofArray([singleton((dispatch_2) => {
-                    dispatch_2(new Msg(1, []));
-                }), singleton((dispatch_3) => {
-                    dispatch_3(new Msg(20, ["Settings saved successfully", new ToastType(0, [])]));
-                })]))];
+                return [model, singleton((dispatch_1) => {
+                    dispatch_1(new Msg(1, []));
+                })];
             }
         case 5:
             return [new Model(model.CurrentPage, model.Settings, new LoadingState$1(1, []), model.IsRecordingHotkey, model.EditingKeyword, model.Toasts), Cmd_OfPromise_either(getStatus, undefined, (Item_2) => (new Msg(6, [Item_2])), (ex_2) => (new Msg(6, [new FSharpResult$2(1, [ex_2.message])])))];
@@ -72,8 +68,8 @@ export function update(msg, model) {
             if (matchValue.tag === 2) {
                 const settings_3 = matchValue.fields[0];
                 const updatedSettings = new AppSettings(settings_3.HotkeyKey, settings_3.HotkeyModifiers, !settings_3.IsEnabled, settings_3.ModelSize, settings_3.RecordingDuration, settings_3.TypingSpeed, settings_3.KeywordReplacements);
-                return [model, singleton((dispatch_5) => {
-                    dispatch_5(new Msg(3, [updatedSettings]));
+                return [model, singleton((dispatch_3) => {
+                    dispatch_3(new Msg(3, [updatedSettings]));
                 })];
             }
             else {
@@ -87,16 +83,16 @@ export function update(msg, model) {
             if (matchValue_1.tag === 2) {
                 const settings_4 = matchValue_1.fields[0];
                 if (msg.fields[0] === 0) {
-                    return [new Model(model.CurrentPage, model.Settings, model.Status, false, model.EditingKeyword, model.Toasts), singleton((dispatch_6) => {
-                        dispatch_6(new Msg(20, ["Hotkey must include at least one modifier key (Ctrl, Shift, Alt, or Win)", new ToastType(3, [])]));
+                    return [new Model(model.CurrentPage, model.Settings, model.Status, false, model.EditingKeyword, model.Toasts), singleton((dispatch_4) => {
+                        dispatch_4(new Msg(20, ["Hotkey must include at least one modifier key (Ctrl, Shift, Alt, or Win)", new ToastType(3, [])]));
                     })];
                 }
                 else {
                     const updatedSettings_1 = new AppSettings(msg.fields[1], msg.fields[0], settings_4.IsEnabled, settings_4.ModelSize, settings_4.RecordingDuration, settings_4.TypingSpeed, settings_4.KeywordReplacements);
-                    return [new Model(model.CurrentPage, model.Settings, model.Status, false, model.EditingKeyword, model.Toasts), Cmd_batch(ofArray([singleton((dispatch_7) => {
-                        dispatch_7(new Msg(3, [updatedSettings_1]));
-                    }), singleton((dispatch_8) => {
-                        dispatch_8(new Msg(20, ["Hotkey updated successfully", new ToastType(0, [])]));
+                    return [new Model(model.CurrentPage, model.Settings, model.Status, false, model.EditingKeyword, model.Toasts), Cmd_batch(ofArray([singleton((dispatch_5) => {
+                        dispatch_5(new Msg(3, [updatedSettings_1]));
+                    }), singleton((dispatch_6) => {
+                        dispatch_6(new Msg(20, ["Hotkey updated successfully", new ToastType(0, [])]));
                     })]))];
                 }
             }
@@ -173,15 +169,15 @@ export function update(msg, model) {
             return [model, Cmd_OfPromise_either(addExampleKeywords, undefined, (Item_3) => (new Msg(18, [Item_3])), (ex_6) => (new Msg(18, [new FSharpResult$2(1, [ex_6.message])])))];
         case 18:
             if (msg.fields[0].tag === 1) {
-                return [model, (msg_12 = (new Msg(20, [toText(printf("Failed to add examples: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch_11) => {
-                    dispatch_11(msg_12);
+                return [model, (msg_10 = (new Msg(20, [toText(printf("Failed to add examples: %s"))(msg.fields[0].fields[0]), new ToastType(1, [])])), singleton((dispatch_9) => {
+                    dispatch_9(msg_10);
                 }))];
             }
             else {
-                return [model, Cmd_batch(ofArray([singleton((dispatch_9) => {
-                    dispatch_9(new Msg(1, []));
-                }), (msg_11 = (new Msg(20, [toText(printf("Added %d example keywords"))(msg.fields[0].fields[0]), new ToastType(0, [])])), singleton((dispatch_10) => {
-                    dispatch_10(msg_11);
+                return [model, Cmd_batch(ofArray([singleton((dispatch_7) => {
+                    dispatch_7(new Msg(1, []));
+                }), (msg_9 = (new Msg(20, [toText(printf("Added %d example keywords"))(msg.fields[0].fields[0]), new ToastType(0, [])])), singleton((dispatch_8) => {
+                    dispatch_8(msg_9);
                 }))]))];
             }
         case 20:

@@ -4,10 +4,10 @@ import { createElement } from "react";
 import { createObj } from "../../fable_modules/fable-library-js.4.25.0/Util.js";
 import { value as value_15, defaultArg } from "../../fable_modules/fable-library-js.4.25.0/Option.js";
 import { printf, toText } from "../../fable_modules/fable-library-js.4.25.0/String.js";
-import { Interop_reactApi } from "../../fable_modules/Feliz.2.7.0/./Interop.fs.js";
+import { Interop_reactApi } from "../../fable_modules/Feliz.2.7.0/Interop.fs.js";
 import { ofArray } from "../../fable_modules/fable-library-js.4.25.0/List.js";
 import { empty, singleton, append, delay, toList } from "../../fable_modules/fable-library-js.4.25.0/Seq.js";
-import { defaultOf } from "../../fable_modules/Feliz.2.7.0/../fable-library-js.4.25.0/Util.js";
+import { defaultOf } from "../../fable_modules/fable-library-js.4.25.0/Util.js";
 
 export class CardProps extends Record {
     constructor(Title, Children, ClassName) {

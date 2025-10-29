@@ -8,8 +8,8 @@ export default defineConfig({
   root: './dist',  // Use dist folder as root since Fable outputs there
   publicDir: path.resolve(__dirname, 'public'),
   build: {
-    outDir: path.resolve(__dirname, 'dist'),
-    emptyOutDir: false,  // Don't delete Fable output
+    outDir: path.resolve(__dirname, 'dist-build'),  // Output to a different directory for production build
+    emptyOutDir: true,  // Clean the build output directory
     sourcemap: false,
     rollupOptions: {
       input: path.resolve(__dirname, 'dist/index.html'),

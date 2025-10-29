@@ -1,5 +1,5 @@
 import { fromString, list, int, bool, uint32, string, object } from "../fable_modules/Thoth.Json.10.4.1/Decode.fs.js";
-import { AppStatus, AppSettings, KeywordReplacement } from "./Types.fs.js";
+import { AppStatus, AppSettings, KeywordReplacement } from "./Types.js";
 import { toString, list as list_1, object as object_1 } from "../fable_modules/Thoth.Json.10.4.1/Encode.fs.js";
 import { uncurry2 } from "../fable_modules/fable-library-js.4.25.0/Util.js";
 import { map } from "../fable_modules/fable-library-js.4.25.0/List.js";

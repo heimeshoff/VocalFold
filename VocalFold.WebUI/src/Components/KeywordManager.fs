@@ -9,6 +9,7 @@ open Components.Button
 // Keyword Modal Component
 // ============================================================================
 
+[<ReactComponent>]
 let private keywordModal (keyword: KeywordReplacement option) (index: int option) (dispatch: Msg -> unit) (onClose: unit -> unit) =
     let keywordInput, setKeywordInput = React.useState(keyword |> Option.map (fun k -> k.Keyword) |> Option.defaultValue "")
     let replacementInput, setReplacementInput = React.useState(keyword |> Option.map (fun k -> k.Replacement) |> Option.defaultValue "")
@@ -248,26 +249,21 @@ let private keywordTable (keywords: KeywordReplacement list) (dispatch: Msg -> u
 // ============================================================================
 
 let view (settings: LoadingState<AppSettings>) (editingKeyword: (int * KeywordReplacement) option) (dispatch: Msg -> unit) =
-    let showModal, setShowModal = React.useState(false)
-    let editIndex, setEditIndex = React.useState<int option>(None)
-    let editKeyword, setEditKeyword = React.useState<KeywordReplacement option>(None)
+
+    let showModal = editingKeyword.IsSome
+    let editIndex = editingKeyword |> Option.map fst
+    let editKeyword = editingKeyword |> Option.map snd
 
     let handleEdit (index: int) =
         match settings with
         | LoadingState.Loaded s when index >= 0 && index < s.KeywordReplacements.Length ->
-            setEditIndex (Some index)
-            setEditKeyword (Some s.KeywordReplacements.[index])
-            setShowModal true
+            dispatch (EditKeyword index)
         | LoadingState.Loaded _ when index = -1 ->
-            setEditIndex None
-            setEditKeyword None
-            setShowModal true
+            dispatch AddKeyword
         | _ -> ()
 
     let handleCloseModal () =
-        setShowModal false
-        setEditIndex None
-        setEditKeyword None
+        dispatch CancelEditKeyword
 
     Html.div [
         prop.className "space-y-6"

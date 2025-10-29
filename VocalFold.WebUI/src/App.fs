@@ -45,7 +45,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | SettingsLoaded (Result.Ok settings) ->
         { model with Settings = LoadingState.Loaded settings },
-        Cmd.ofMsg (ShowToast ("Settings loaded", ToastType.Success))
+        Cmd.none
 
     | SettingsLoaded (Result.Error err) ->
         { model with Settings = LoadingState.Error err },
@@ -61,10 +61,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | SettingsSaved (Result.Ok ()) ->
         model,
-        Cmd.batch [
-            Cmd.ofMsg LoadSettings
-            Cmd.ofMsg (ShowToast ("Settings saved successfully", ToastType.Success))
-        ]
+        Cmd.ofMsg LoadSettings
 
     | SettingsSaved (Result.Error err) ->
         model,
