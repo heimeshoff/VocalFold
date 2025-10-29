@@ -56,8 +56,93 @@ let main argv =
         // Create overlay manager
         let overlayManager = OverlayWindow.OverlayManager()
 
+        // Function to open settings dialog (can be called from tray icon or voice command)
+        // Note: Using 'let rec ... and ...' for mutual recursion with onKeyDown/onKeyUp
+        let rec openSettingsDialog () =
+            try
+                Logger.info "Opening web-based settings UI..."
+
+                // Callback for when settings change via web UI
+                let onSettingsChanged (newSettings: Settings.AppSettings) =
+                    Logger.info "Settings changed via web UI"
+
+                    // Check what changed
+                    let hotkeyChanged =
+                        newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
+                        newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
+
+                    let startupChanged =
+                        newSettings.StartWithWindows <> currentSettings.StartWithWindows
+
+                    // Update current settings
+                    currentSettings <- newSettings
+
+                    // Apply changes
+                    match trayState with
+                    | Some tray ->
+                        if hotkeyChanged then
+                            // Reinstall keyboard hook with new hotkey
+                            HotkeyManager.uninstallKeyboardHook() |> ignore
+                            let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp currentSettings.HotkeyKey currentSettings.HotkeyModifiers
+                            if hookInstalled then
+                                Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
+                            else
+                                Logger.error "Failed to register new hotkey!"
+
+                        if startupChanged then
+                            // Handle start with Windows setting change
+                            if newSettings.StartWithWindows then
+                                let exePath = System.Reflection.Assembly.GetExecutingAssembly().Location
+                                let exePath =
+                                    if exePath.EndsWith(".dll") then
+                                        // Running via dotnet, use the actual exe path
+                                        System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+                                    else
+                                        exePath
+                                if TrayIcon.Startup.enable exePath then
+                                    Logger.info "Enabled start with Windows"
+                                else
+                                    Logger.error "Failed to enable start with Windows"
+                            else
+                                if TrayIcon.Startup.disable() then
+                                    Logger.info "Disabled start with Windows"
+                                else
+                                    Logger.error "Failed to disable start with Windows"
+                    | None -> ()
+
+                match webServerState with
+                | Some state ->
+                    // Server already running, just open browser
+                    Logger.info "Web server already running, opening browser..."
+                    let url = WebServer.getUrl state
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
+                | None ->
+                    // Start web server
+                    Logger.info "Starting web server..."
+                    match trayState with
+                    | Some tray -> TrayIcon.notifyInfo tray "Opening settings..."
+                    | None -> ()
+
+                    let serverConfig: WebServer.ServerConfig = {
+                        OnSettingsChanged = onSettingsChanged
+                    }
+
+                    let state = WebServer.start serverConfig |> Async.RunSynchronously
+                    webServerState <- Some state
+
+                    // Open browser to settings page
+                    let url = WebServer.getUrl state
+                    Logger.info (sprintf "Opening browser to: %s" url)
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
+            with
+            | ex ->
+                Logger.logException ex "Error opening settings UI"
+                match trayState with
+                | Some tray -> TrayIcon.notifyError tray "Failed to open settings"
+                | None -> ()
+
         // Key down callback - Start recording
-        let onKeyDown () =
+        and onKeyDown () =
             try
                 if currentRecording.IsNone then
                     Logger.info "Starting recording..."
@@ -100,7 +185,7 @@ let main argv =
                 Logger.logException ex "Unhandled exception in onKeyDown"
 
         // Key up callback - Stop recording and transcribe
-        let onKeyUp () =
+        and onKeyUp () =
             try
                 match currentRecording with
                 | Some state ->
@@ -140,22 +225,34 @@ let main argv =
                                         Logger.warning "No speech detected in audio"
                                         overlayManager.Hide()
                                     else
-                                        // Process keyword replacements
-                                        let processedText = TextProcessor.processTranscription transcription currentSettings.KeywordReplacements
+                                        // Process transcription and check for special commands
+                                        let processingResult = TextProcessor.processTranscriptionWithCommands transcription currentSettings.KeywordReplacements
 
-                                        // Hide overlay BEFORE typing so input goes to the correct window
-                                        Logger.debug "Hiding overlay before typing"
-                                        overlayManager.Hide()
+                                        match processingResult with
+                                        | TextProcessor.OpenSettings ->
+                                            // Hide overlay first
+                                            Logger.info "Opening settings via voice command..."
+                                            overlayManager.Hide()
+                                            do! Async.Sleep(400)
 
-                                        // Wait for overlay fade-out animation (300ms) + extra time for focus to return
-                                        Logger.debug "Waiting for overlay to hide and focus to return..."
-                                        do! Async.Sleep(400)
+                                            // Open settings dialog
+                                            openSettingsDialog()
+                                            Logger.info "Settings command completed successfully"
 
-                                        // Type the processed text
-                                        Logger.info "Typing transcribed text..."
-                                        TextInput.typeTextWithSettings processedText currentSettings
-                                        Logger.info "Text typing completed"
-                                        Logger.info "Transcription flow completed successfully"
+                                        | TextProcessor.TypeText processedText ->
+                                            // Hide overlay BEFORE typing so input goes to the correct window
+                                            Logger.debug "Hiding overlay before typing"
+                                            overlayManager.Hide()
+
+                                            // Wait for overlay fade-out animation (300ms) + extra time for focus to return
+                                            Logger.debug "Waiting for overlay to hide and focus to return..."
+                                            do! Async.Sleep(400)
+
+                                            // Type the processed text
+                                            Logger.info "Typing transcribed text..."
+                                            TextInput.typeTextWithSettings processedText currentSettings
+                                            Logger.info "Text typing completed"
+                                            Logger.info "Transcription flow completed successfully"
                                 with
                                 | ex ->
                                     Logger.logException ex "Error during transcription"
@@ -191,89 +288,7 @@ let main argv =
                 Logger.info "User requested exit via tray icon"
                 shouldExit <- true
                 HotkeyManager.exitMessageLoop()
-            OnSettings = fun () ->
-                // Launch web-based settings UI
-                try
-                    Logger.info "Opening web-based settings UI..."
-
-                    // Callback for when settings change via web UI
-                    let onSettingsChanged (newSettings: Settings.AppSettings) =
-                        Logger.info "Settings changed via web UI"
-
-                        // Check what changed
-                        let hotkeyChanged =
-                            newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
-                            newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
-
-                        let startupChanged =
-                            newSettings.StartWithWindows <> currentSettings.StartWithWindows
-
-                        // Update current settings
-                        currentSettings <- newSettings
-
-                        // Apply changes
-                        match trayState with
-                        | Some tray ->
-                            if hotkeyChanged then
-                                // Reinstall keyboard hook with new hotkey
-                                HotkeyManager.uninstallKeyboardHook() |> ignore
-                                let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp currentSettings.HotkeyKey currentSettings.HotkeyModifiers
-                                if hookInstalled then
-                                    Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
-                                else
-                                    Logger.error "Failed to register new hotkey!"
-
-                            if startupChanged then
-                                // Handle start with Windows setting change
-                                if newSettings.StartWithWindows then
-                                    let exePath = System.Reflection.Assembly.GetExecutingAssembly().Location
-                                    let exePath =
-                                        if exePath.EndsWith(".dll") then
-                                            // Running via dotnet, use the actual exe path
-                                            System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
-                                        else
-                                            exePath
-                                    if TrayIcon.Startup.enable exePath then
-                                        Logger.info "Enabled start with Windows"
-                                    else
-                                        Logger.error "Failed to enable start with Windows"
-                                else
-                                    if TrayIcon.Startup.disable() then
-                                        Logger.info "Disabled start with Windows"
-                                    else
-                                        Logger.error "Failed to disable start with Windows"
-                        | None -> ()
-
-                    match webServerState with
-                    | Some state ->
-                        // Server already running, just open browser
-                        Logger.info "Web server already running, opening browser..."
-                        let url = WebServer.getUrl state
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
-                    | None ->
-                        // Start web server
-                        Logger.info "Starting web server..."
-                        match trayState with
-                        | Some tray -> TrayIcon.notifyInfo tray "Opening settings..."
-                        | None -> ()
-
-                        let serverConfig: WebServer.ServerConfig = {
-                            OnSettingsChanged = onSettingsChanged
-                        }
-
-                        let state = WebServer.start serverConfig |> Async.RunSynchronously
-                        webServerState <- Some state
-
-                        // Open browser to settings page
-                        let url = WebServer.getUrl state
-                        Logger.info (sprintf "Opening browser to: %s" url)
-                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
-                with
-                | ex ->
-                    Logger.logException ex "Error opening settings UI"
-                    match trayState with
-                    | Some tray -> TrayIcon.notifyError tray "Failed to open settings"
-                    | None -> ()
+            OnSettings = openSettingsDialog
         }
 
         let tray = TrayIcon.create trayConfig

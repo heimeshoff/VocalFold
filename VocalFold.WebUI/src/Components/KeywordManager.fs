@@ -123,6 +123,88 @@ let private keywordModal (keyword: KeywordReplacement option) (index: int option
     ]
 
 // ============================================================================
+// Built-in Commands Section
+// ============================================================================
+
+let private commandsSection () =
+    Html.div [
+        prop.className "bg-background-card rounded-lg overflow-hidden border border-primary/30"
+        prop.children [
+            Html.div [
+                prop.className "bg-primary/5 px-6 py-3 border-b border-primary/30"
+                prop.children [
+                    Html.div [
+                        prop.className "flex items-center justify-between"
+                        prop.children [
+                            Html.div [
+                                Html.h3 [
+                                    prop.className "text-lg font-bold text-text-primary"
+                                    prop.text "Built-in Commands"
+                                ]
+                                Html.p [
+                                    prop.className "text-text-secondary text-sm mt-1"
+                                    prop.text "These commands are built into VocalFold and cannot be edited or deleted"
+                                ]
+                            ]
+                            Html.span [
+                                prop.className "px-3 py-1 bg-primary/20 text-primary text-xs font-semibold rounded-full"
+                                prop.text "SYSTEM"
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+            Html.table [
+                prop.className "w-full"
+                prop.children [
+                    Html.thead [
+                        prop.className "bg-background-sidebar"
+                        prop.children [
+                            Html.tr [
+                                Html.th [
+                                    prop.className "text-left px-6 py-3 text-sm font-semibold text-text-primary"
+                                    prop.text "Command"
+                                ]
+                                Html.th [
+                                    prop.className "text-left px-6 py-3 text-sm font-semibold text-text-primary"
+                                    prop.text "Description"
+                                ]
+                            ]
+                        ]
+                    ]
+                    Html.tbody [
+                        prop.children [
+                            Html.tr [
+                                prop.className "border-t border-white/10"
+                                prop.children [
+                                    Html.td [
+                                        prop.className "px-6 py-4"
+                                        prop.children [
+                                            Html.span [
+                                                prop.className "font-mono text-primary font-medium"
+                                                prop.text "open vocalfold settings"
+                                            ]
+                                        ]
+                                    ]
+                                    Html.td [
+                                        prop.className "px-6 py-4"
+                                        prop.children [
+                                            Html.span [
+                                                prop.className "text-text-secondary text-sm"
+                                                prop.text "Opens the VocalFold settings page"
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+// ============================================================================
 // Keyword Table Component
 // ============================================================================
 
@@ -331,6 +413,20 @@ let view (settings: LoadingState<AppSettings>) (editingKeyword: (int * KeywordRe
                                 ]
                             ]
                         ]
+                    ]
+                ]
+            ]
+
+            // Built-in Commands Section
+            commandsSection()
+
+            // Keyword Replacements Header
+            Html.div [
+                prop.className "flex items-center justify-between pt-4"
+                prop.children [
+                    Html.h3 [
+                        prop.className "text-2xl font-bold text-text-primary"
+                        prop.text "Custom Keyword Replacements"
                     ]
                 ]
             ]
