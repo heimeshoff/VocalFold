@@ -202,9 +202,19 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                     Html.aside [
                         prop.className "w-64 h-screen bg-background-sidebar p-6"
                         prop.children [
-                            Html.h1 [
-                                prop.className "text-2xl font-bold text-primary mb-8"
-                                prop.text "VocalFold"
+                            Html.div [
+                                prop.className "flex items-center gap-3 mb-8"
+                                prop.children [
+                                    Html.img [
+                                        prop.src "/logo.png"
+                                        prop.alt "VocalFold Logo"
+                                        prop.className "w-10 h-10"
+                                    ]
+                                    Html.h1 [
+                                        prop.className "text-2xl font-bold text-primary"
+                                        prop.text "VocalFold"
+                                    ]
+                                ]
                             ]
                             Html.nav [
                                 prop.children [
