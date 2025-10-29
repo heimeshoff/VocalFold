@@ -540,6 +540,12 @@ Comprehensive testing:
 - Backend REST API using Giraffe (F# web framework)
 - Runs on localhost with embedded web server
 
+**Design System - Brand Colors**:
+- **Primary**: `#25abfe` (Blue) - Used for main buttons, links, active states
+- **Secondary**: `#ff8b00` (Orange) - Used for accents, highlights, success states
+- Complete color palette with shades (50-900) defined in TailwindCSS config
+- Dark theme background with brand color accents throughout the UI
+
 **Architecture Overview**:
 ```
 VocalFold.exe
@@ -738,20 +744,45 @@ VocalFold/
 6. Create basic index.html
 7. Create build scripts (dev and production)
 
-**TailwindCSS custom theme** (dark mode, accent colors):
+**TailwindCSS custom theme** (dark mode, company branding colors):
 ```js
 module.exports = {
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        // Company branding colors
         primary: {
+          DEFAULT: '#25abfe',   // Primary brand color (blue)
+          50: '#e6f5ff',
+          100: '#b8e2ff',
+          200: '#8acfff',
+          300: '#5cbcff',
+          400: '#25abfe',        // Main primary
+          500: '#0c95e8',
+          600: '#0a7bc2',
+          700: '#08619c',
+          800: '#064776',
+          900: '#042d50',
+        },
+        secondary: {
+          DEFAULT: '#ff8b00',   // Secondary brand color (orange)
+          50: '#fff3e0',
+          100: '#ffd9a3',
+          200: '#ffc266',
+          300: '#ffab29',
+          400: '#ff8b00',        // Main secondary
+          500: '#e67a00',
+          600: '#cc6b00',
+          700: '#b35c00',
+          800: '#994d00',
+          900: '#803e00',
+        },
+        // UI colors
+        background: {
           dark: '#1a1a1a',      // DarkBackground
           card: '#2a2a2a',      // CardBackground
           sidebar: '#232323',   // SidebarBackground
-        },
-        accent: {
-          blue: '#4A9EFF',      // AccentBlue
         },
         text: {
           primary: '#FFFFFF',   // PrimaryText
@@ -782,8 +813,6 @@ module Types
 type KeywordReplacement = {
     Keyword: string
     Replacement: string
-    CaseSensitive: bool
-    WholePhrase: bool
 }
 
 type AppSettings = {
@@ -1174,14 +1203,14 @@ Keyword Replacements
 
 [Add Keyword]  [Import]  [Export]  [Add Examples]
 
-┌───────────────────────────────────────────────────────┐
-│ Keyword     │ Replacement        │ Case │ Whole Word │
-├───────────────────────────────────────────────────────┤
-│ comma       │ ,                  │ ☐    │ ☑          │ [Edit] [Delete]
-│ period      │ .                  │ ☐    │ ☑          │ [Edit] [Delete]
-│ new line    │ \n                 │ ☐    │ ☑          │ [Edit] [Delete]
-│ German f... │ Best regards,\n... │ ☐    │ ☑          │ [Edit] [Delete]
-└───────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│ Keyword     │ Replacement                           │
+├─────────────────────────────────────────────────────┤
+│ comma       │ ,                                     │ [Edit] [Delete]
+│ period      │ .                                     │ [Edit] [Delete]
+│ new line    │ \n                                    │ [Edit] [Delete]
+│ German f... │ Best regards,\n...                    │ [Edit] [Delete]
+└─────────────────────────────────────────────────────┘
 ```
 
 **Modal for Add/Edit**:
@@ -1198,9 +1227,6 @@ Keyword Replacements
 │  [_____________________________]        │
 │  [_____________________________]        │
 │                                         │
-│  ☑ Case Sensitive                       │
-│  ☑ Match Whole Phrase Only              │
-│                                         │
 │         [Cancel]  [Save]                │
 └─────────────────────────────────────────┘
 ```
@@ -1212,14 +1238,12 @@ Keyword Replacements
    - Search/filter box at top
    - Row actions (edit, delete)
    - Truncate long replacements with tooltip
-   - Visual indicators for case/whole word settings
    - Empty state with helpful message
 
 2. **KeywordModal**:
    - Add or edit mode
    - Form validation (no empty keywords)
    - Multi-line textarea for replacement
-   - Checkboxes for options
    - Preview of replacement
    - Escape key to cancel
    - Enter key to save (if valid)
@@ -1302,12 +1326,20 @@ Add visual feedback throughout the app:
 
 Add final polish and theme customization:
 
-**Dark theme** (default, matching current app):
+**Dark theme** (default, with company branding):
 - Background: `#1a1a1a`
 - Cards: `#2a2a2a`
 - Text: `#FFFFFF` / `#B0B0B0`
-- Accent: `#4A9EFF`
+- Primary (brand): `#25abfe` (blue)
+- Secondary (brand): `#ff8b00` (orange)
 - Borders: `#3a3a3a`
+
+**Color usage guidelines**:
+- Primary blue (`#25abfe`): Main CTAs, active states, links, primary buttons
+- Secondary orange (`#ff8b00`): Accent elements, success states, highlights, secondary buttons
+- Use gradient combinations for special elements (e.g., `from-primary to-secondary`)
+- Hover states: Use lighter shades (primary-300, secondary-300)
+- Active states: Use darker shades (primary-600, secondary-600)
 
 **Animations & transitions**:
 - Page transitions: Fade in with slight scale
