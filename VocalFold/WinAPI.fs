@@ -208,12 +208,16 @@ let private keyboardHookCallback (nCode: int) (wParam: IntPtr) (lParam: IntPtr) 
                 let requiredAlt = (targetHotkeyModifiers &&& MOD_ALT) <> 0u
                 let requiredWin = (targetHotkeyModifiers &&& MOD_WIN) <> 0u
 
+                // Special case: if target key IS a Win key, don't check Win modifier state
+                // because the key itself being pressed makes winDown = true
+                let isWinKey = (vkCode = VK_LWIN || vkCode = VK_RWIN)
+
                 // All required modifiers must be pressed
                 let modifiersMatch =
                     (requiredCtrl = ctrlDown) &&
                     (requiredShift = shiftDown) &&
                     (requiredAlt = altDown) &&
-                    (requiredWin = winDown)
+                    (if isWinKey then true else (requiredWin = winDown))
 
                 if modifiersMatch && not targetKeyPressed then
                     targetKeyPressed <- true

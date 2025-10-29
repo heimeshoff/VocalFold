@@ -17,6 +17,7 @@ let init () =
         Settings = NotStarted
         Status = NotStarted
         IsRecordingHotkey = false
+        PendingHotkey = None
         EditingKeyword = None
         Toasts = []
     }
@@ -90,31 +91,33 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             model, Cmd.none
 
     | StartRecordingHotkey ->
-        { model with IsRecordingHotkey = true }, Cmd.none
+        { model with IsRecordingHotkey = true; PendingHotkey = None }, Cmd.none
 
     | HotkeyRecorded (modifiers, key) ->
-        match model.Settings with
-        | LoadingState.Loaded settings ->
-            // Validate that at least one modifier is present
-            if modifiers = 0u then
-                { model with IsRecordingHotkey = false },
-                Cmd.ofMsg (ShowToast ("Hotkey must include at least one modifier key (Ctrl, Shift, Alt, or Win)", ToastType.Warning))
-            else
-                let updatedSettings = {
-                    settings with
-                        HotkeyModifiers = modifiers
-                        HotkeyKey = key
-                }
-                { model with IsRecordingHotkey = false },
-                Cmd.batch [
-                    Cmd.ofMsg (UpdateSettings updatedSettings)
-                    Cmd.ofMsg (ShowToast ("Hotkey updated successfully", ToastType.Success))
-                ]
+        // Just store the pending hotkey, don't apply it yet
+        // Validate that at least one modifier is present
+        if modifiers = 0u then
+            { model with IsRecordingHotkey = false; PendingHotkey = None },
+            Cmd.ofMsg (ShowToast ("Hotkey must include at least one modifier key (Ctrl, Shift, Alt, or Win)", ToastType.Warning))
+        else
+            { model with IsRecordingHotkey = false; PendingHotkey = Some (modifiers, key) },
+            Cmd.none
+
+    | ApplyHotkey ->
+        match model.PendingHotkey, model.Settings with
+        | Some (modifiers, key), LoadingState.Loaded settings ->
+            let updatedSettings = {
+                settings with
+                    HotkeyModifiers = modifiers
+                    HotkeyKey = key
+            }
+            { model with PendingHotkey = None },
+            Cmd.ofMsg (UpdateSettings updatedSettings)
         | _ ->
-            { model with IsRecordingHotkey = false }, Cmd.none
+            model, Cmd.none
 
     | CancelRecordingHotkey ->
-        { model with IsRecordingHotkey = false }, Cmd.none
+        { model with IsRecordingHotkey = false; PendingHotkey = None }, Cmd.none
 
     | AddKeyword ->
         { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = "" }) }, Cmd.none
@@ -241,7 +244,7 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             | Dashboard ->
                                 Components.Dashboard.view model.Status model.Settings dispatch
                             | GeneralSettings ->
-                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey dispatch
+                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | KeywordSettings ->
                                 Components.KeywordManager.view model.Settings model.EditingKeyword dispatch
                         ]

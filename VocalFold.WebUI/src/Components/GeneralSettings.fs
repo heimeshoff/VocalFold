@@ -17,6 +17,17 @@ let getKeyDisplayName (keyCode: uint32) =
     | 9u -> "Tab"
     | 8u -> "Backspace"
     | 27u -> "Escape"
+    | 46u -> "Delete"
+    | 33u -> "Page Up"
+    | 34u -> "Page Down"
+    | 35u -> "End"
+    | 36u -> "Home"
+    | 37u -> "Left"
+    | 38u -> "Up"
+    | 39u -> "Right"
+    | 40u -> "Down"
+    | 91u -> "Left Win"
+    | 92u -> "Right Win"
     | 112u -> "F1"
     | 113u -> "F2"
     | 114u -> "F3"
@@ -54,22 +65,25 @@ let formatHotkey (modifiers: uint32) (key: uint32) =
 // ============================================================================
 
 [<ReactComponent>]
-let private hotkeyRecorder (isRecording: bool) (currentKey: uint32) (currentModifiers: uint32) (dispatch: Msg -> unit) =
+let private hotkeyRecorder (isRecording: bool) (currentKey: uint32) (currentModifiers: uint32) (pendingHotkey: (uint32 * uint32) option) (dispatch: Msg -> unit) =
     let onKeyDown (e: KeyboardEvent) =
         if isRecording then
             e.preventDefault()
             e.stopPropagation()
 
+            let keyCode = uint32 e.keyCode
+
+            // Calculate modifiers, but exclude Win from modifiers if the key itself is Win
+            // This prevents "Ctrl+Win+Left Win" and instead shows "Ctrl+Win"
             let modifiers =
                 (if e.altKey then 1u else 0u) |||
                 (if e.ctrlKey then 2u else 0u) |||
                 (if e.shiftKey then 4u else 0u) |||
-                (if e.metaKey then 8u else 0u)
+                (if e.metaKey && keyCode <> 91u && keyCode <> 92u then 8u else 0u)
 
-            let keyCode = uint32 e.keyCode
-
-            // Ignore modifier-only keys
-            if keyCode <> 16u && keyCode <> 17u && keyCode <> 18u && keyCode <> 91u then
+            // Ignore standalone modifier keys (Shift, Ctrl, Alt) but allow Win key
+            // This allows combinations like Ctrl+Win or Shift+Win
+            if keyCode <> 16u && keyCode <> 17u && keyCode <> 18u then
                 dispatch (HotkeyRecorded (modifiers, keyCode))
 
     React.useEffect((fun () ->
@@ -104,20 +118,56 @@ let private hotkeyRecorder (isRecording: bool) (currentKey: uint32) (currentModi
                                     prop.className hotkeyClass
                                     prop.text (formatHotkey currentModifiers currentKey)
                                 ]
+                                match pendingHotkey with
+                                | Some (pendingMods, pendingKey) ->
+                                    Html.div [
+                                        prop.className "mt-2"
+                                        prop.children [
+                                            Html.p [
+                                                prop.className "text-text-secondary text-xs mb-1"
+                                                prop.text "New Hotkey:"
+                                            ]
+                                            Html.p [
+                                                prop.className "text-xl font-mono font-bold text-green-500"
+                                                prop.text (formatHotkey pendingMods pendingKey)
+                                            ]
+                                        ]
+                                    ]
+                                | None -> Html.none
                             ]
-                            let buttonClass =
-                                sprintf "px-6 py-2 rounded-lg font-medium transition-all duration-200 %s"
-                                    (if isRecording then "bg-red-500 hover:bg-red-600 text-white animate-pulse" else "bg-primary hover:bg-primary-600 text-white")
-                            Html.button [
-                                prop.className buttonClass
-                                prop.text (if isRecording then "Cancel" else "Record New Hotkey")
-                                prop.onClick (fun _ ->
-                                    if isRecording then
-                                        dispatch CancelRecordingHotkey
-                                    else
-                                        dispatch StartRecordingHotkey
-                                )
-                            ]
+                            match pendingHotkey with
+                            | Some _ ->
+                                // Show Apply and Cancel buttons when there's a pending hotkey
+                                Html.div [
+                                    prop.className "flex gap-2"
+                                    prop.children [
+                                        Html.button [
+                                            prop.className "px-6 py-2 rounded-lg font-medium transition-all duration-200 bg-green-500 hover:bg-green-600 text-white"
+                                            prop.text "Apply"
+                                            prop.onClick (fun _ -> dispatch ApplyHotkey)
+                                        ]
+                                        Html.button [
+                                            prop.className "px-6 py-2 rounded-lg font-medium transition-all duration-200 bg-red-500 hover:bg-red-600 text-white"
+                                            prop.text "Cancel"
+                                            prop.onClick (fun _ -> dispatch CancelRecordingHotkey)
+                                        ]
+                                    ]
+                                ]
+                            | None ->
+                                // Show Record/Cancel button when no pending hotkey
+                                let buttonClass =
+                                    sprintf "px-6 py-2 rounded-lg font-medium transition-all duration-200 %s"
+                                        (if isRecording then "bg-red-500 hover:bg-red-600 text-white animate-pulse" else "bg-primary hover:bg-primary-600 text-white")
+                                Html.button [
+                                    prop.className buttonClass
+                                    prop.text (if isRecording then "Cancel" else "Record New Hotkey")
+                                    prop.onClick (fun _ ->
+                                        if isRecording then
+                                            dispatch CancelRecordingHotkey
+                                        else
+                                            dispatch StartRecordingHotkey
+                                    )
+                                ]
                         ]
                     ]
 
@@ -147,7 +197,7 @@ let private hotkeyRecorder (isRecording: bool) (currentKey: uint32) (currentModi
                             prop.children [
                                 Html.p [
                                     prop.className "text-text-secondary text-sm"
-                                    prop.text "Click 'Record New Hotkey' and press your desired key combination. The hotkey will be saved automatically."
+                                    prop.text "Click 'Record New Hotkey' and press your desired key combination. Click 'Apply' to confirm or keep pressing different keys until you find the right one."
                                 ]
                             ]
                         ]
@@ -269,7 +319,7 @@ let private typingSpeedSelector (currentSpeed: string) (dispatch: Msg -> unit) (
 // Main View
 // ============================================================================
 
-let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (dispatch: Msg -> unit) =
+let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (pendingHotkey: (uint32 * uint32) option) (dispatch: Msg -> unit) =
     Html.div [
         prop.className "space-y-6"
         prop.children [
@@ -283,7 +333,7 @@ let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (dispat
                 Html.div [
                     prop.className "space-y-6"
                     prop.children [
-                        hotkeyRecorder isRecordingHotkey s.HotkeyKey s.HotkeyModifiers dispatch
+                        hotkeyRecorder isRecordingHotkey s.HotkeyKey s.HotkeyModifiers pendingHotkey dispatch
 
                         Html.div [
                             prop.className "grid grid-cols-1 md:grid-cols-2 gap-6"

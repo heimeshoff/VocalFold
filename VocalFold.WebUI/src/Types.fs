@@ -56,6 +56,7 @@ type Model = {
     Settings: LoadingState<AppSettings>
     Status: LoadingState<AppStatus>
     IsRecordingHotkey: bool
+    PendingHotkey: (uint32 * uint32) option  // (modifiers, key)
     EditingKeyword: (int * KeywordReplacement) option
     Toasts: Toast list
 }
@@ -81,6 +82,7 @@ type Msg =
     // Hotkey
     | StartRecordingHotkey
     | HotkeyRecorded of uint32 * uint32
+    | ApplyHotkey
     | CancelRecordingHotkey
 
     // Keywords

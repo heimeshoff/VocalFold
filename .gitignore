@@ -60,3 +60,6 @@ nunit-*.xml
 VocalFold.WebUI/node_modules
 deploy
 *.fs.js
+.serena
+VocalFold.WebUI/dist
+VocalFold.WebUI/dist-build
