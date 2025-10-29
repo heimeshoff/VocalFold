@@ -495,10 +495,11 @@ type OverlayManager() =
     member this.Hide() =
         match overlayWindow with
         | Some window ->
-            // Use BeginInvoke for non-blocking UI update
-            window.Dispatcher.BeginInvoke(fun () ->
+            // Use Invoke to ensure hide starts before returning
+            // (caller should wait for fade animation to complete)
+            window.Dispatcher.Invoke(fun () ->
                 window.HideOverlay()
-            ) |> ignore
+            )
         | None -> ()
 
     member this.Cleanup() =

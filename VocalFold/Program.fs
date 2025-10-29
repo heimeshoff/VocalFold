@@ -153,8 +153,9 @@ let main argv =
                                             Logger.debug "Hiding overlay before typing"
                                             overlayManager.Hide()
 
-                                            // Small delay to let the previous window regain focus
-                                            do! Async.Sleep(100)
+                                            // Wait for overlay fade-out animation (300ms) + extra time for focus to return
+                                            Logger.debug "Waiting for overlay to hide and focus to return..."
+                                            do! Async.Sleep(400)
 
                                             // Type the processed text
                                             Logger.info "Typing transcribed text..."
