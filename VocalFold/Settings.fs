@@ -15,14 +15,6 @@ type KeywordReplacement = {
     /// What to type instead
     [<JsonPropertyName("replacement")>]
     Replacement: string
-
-    /// Match case exactly?
-    [<JsonPropertyName("caseSensitive")>]
-    CaseSensitive: bool
-
-    /// Match only complete words/phrases?
-    [<JsonPropertyName("wholePhrase")>]
-    WholePhrase: bool
 }
 
 /// Typing speed configuration

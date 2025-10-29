@@ -26,21 +26,9 @@ let processTranscription (text: string) (replacements: Settings.KeywordReplaceme
             for replacement in sortedReplacements do
                 if not (String.IsNullOrEmpty(replacement.Keyword)) then
                     try
-                        let pattern =
-                            if replacement.WholePhrase then
-                                // Match only complete words/phrases (word boundaries)
-                                sprintf @"\b%s\b" (Regex.Escape(replacement.Keyword))
-                            else
-                                // Match anywhere
-                                Regex.Escape(replacement.Keyword)
-
-                        let regexOptions =
-                            if replacement.CaseSensitive then
-                                RegexOptions.None
-                            else
-                                RegexOptions.IgnoreCase
-
-                        let regex = new Regex(pattern, regexOptions)
+                        // Always match whole phrases (word boundaries) and case-insensitively
+                        let pattern = sprintf @"\b%s\b" (Regex.Escape(replacement.Keyword))
+                        let regex = new Regex(pattern, RegexOptions.IgnoreCase)
                         let matches = regex.Matches(processedText)
 
                         if matches.Count > 0 then
@@ -75,8 +63,6 @@ let createKeywordReplacement (keyword: string) (replacement: string) : Settings.
     {
         Keyword = keyword
         Replacement = replacement
-        CaseSensitive = false
-        WholePhrase = true
     }
 
 /// Validate a keyword replacement
@@ -92,25 +78,21 @@ let validateKeywordReplacement (replacement: Settings.KeywordReplacement) : stri
 let getExampleReplacements () : Settings.KeywordReplacement list =
     [
         // Punctuation shortcuts
-        { Keyword = "comma"; Replacement = ","; CaseSensitive = false; WholePhrase = true }
-        { Keyword = "period"; Replacement = "."; CaseSensitive = false; WholePhrase = true }
-        { Keyword = "question mark"; Replacement = "?"; CaseSensitive = false; WholePhrase = true }
-        { Keyword = "exclamation mark"; Replacement = "!"; CaseSensitive = false; WholePhrase = true }
-        { Keyword = "new line"; Replacement = "\n"; CaseSensitive = false; WholePhrase = true }
+        { Keyword = "comma"; Replacement = "," }
+        { Keyword = "period"; Replacement = "." }
+        { Keyword = "question mark"; Replacement = "?" }
+        { Keyword = "exclamation mark"; Replacement = "!" }
+        { Keyword = "new line"; Replacement = "\n" }
 
         // Email signature example
         {
             Keyword = "German email footer"
             Replacement = "Mit freundlichen Grüßen\nIhr VocalFold Team"
-            CaseSensitive = false
-            WholePhrase = true
         }
 
         // Code snippet example
         {
             Keyword = "main function"
             Replacement = "let main argv =\n    printfn \"Hello, World!\"\n    0"
-            CaseSensitive = false
-            WholePhrase = true
         }
     ]

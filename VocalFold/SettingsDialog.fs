@@ -41,17 +41,17 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         BackColor = Colors.SidebarBackground
     )
 
-    // Add General item first (will be pushed down by title)
-    let generalItem = new SidebarItem("General", "")
-    generalItem.Dock <- DockStyle.Top
-    generalItem.Selected <- true
-    sidebar.Controls.Add(generalItem)
-
-    // Add Keywords item
+    // Add Keywords item first (will be pushed down by General)
     let keywordsItem = new SidebarItem("Keywords", "")
     keywordsItem.Dock <- DockStyle.Top
     keywordsItem.Selected <- false
     sidebar.Controls.Add(keywordsItem)
+
+    // Add General item (will appear on top)
+    let generalItem = new SidebarItem("General", "")
+    generalItem.Dock <- DockStyle.Top
+    generalItem.Selected <- true
+    sidebar.Controls.Add(generalItem)
 
     // Add logo image at the top
     let logoPanel = new Panel(
@@ -341,25 +341,9 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         HeaderText = "Replacement",
         Name = "Replacement",
         ReadOnly = true,
-        FillWeight = 30.0f
+        FillWeight = 40.0f
     )
     keywordsGrid.Columns.Add(replacementCol) |> ignore
-
-    let caseSensitiveCol = new DataGridViewCheckBoxColumn(
-        HeaderText = "Case",
-        Name = "CaseSensitive",
-        ReadOnly = true,
-        FillWeight = 15.0f
-    )
-    keywordsGrid.Columns.Add(caseSensitiveCol) |> ignore
-
-    let wholePhraseCol = new DataGridViewCheckBoxColumn(
-        HeaderText = "Whole Word",
-        Name = "WholePhrase",
-        ReadOnly = true,
-        FillWeight = 15.0f
-    )
-    keywordsGrid.Columns.Add(wholePhraseCol) |> ignore
 
     // Function to refresh keywords grid
     let refreshKeywordsGrid () =
@@ -370,7 +354,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                     kw.Replacement.Substring(0, 47) + "..."
                 else
                     kw.Replacement.Replace("\n", "\\n").Replace("\r", "")
-            keywordsGrid.Rows.Add(kw.Keyword, displayReplacement, kw.CaseSensitive, kw.WholePhrase) |> ignore
+            keywordsGrid.Rows.Add(kw.Keyword, displayReplacement) |> ignore
 
     // Initial load
     refreshKeywordsGrid()
@@ -498,7 +482,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         use dlg = new Form(
             Text = title,
             Width = 500,
-            Height = 380,
+            Height = 290,
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
@@ -543,42 +527,17 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         )
         dlg.Controls.Add(replacementTextBox)
 
-        // Case sensitive checkbox
-        let caseSensitiveCheck = new CheckBox(
-            Text = "Case Sensitive",
-            Location = Point(20, 205),
-            AutoSize = true,
-            ForeColor = Colors.PrimaryText,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 10.0f)
-        )
-        dlg.Controls.Add(caseSensitiveCheck)
-
-        // Whole phrase checkbox
-        let wholePhraseCheck = new CheckBox(
-            Text = "Match Whole Phrase Only",
-            Location = Point(20, 235),
-            AutoSize = true,
-            ForeColor = Colors.PrimaryText,
-            BackColor = Color.Transparent,
-            Font = new Font("Segoe UI", 10.0f),
-            Checked = true
-        )
-        dlg.Controls.Add(wholePhraseCheck)
-
         // Load existing keyword data if editing
         match keyword with
         | Some kw ->
             keywordTextBox.Text <- kw.Keyword
             replacementTextBox.Text <- kw.Replacement
-            caseSensitiveCheck.Checked <- kw.CaseSensitive
-            wholePhraseCheck.Checked <- kw.WholePhrase
         | None -> ()
 
         // OK button
         let okBtn = new ModernButton(
             Text = "OK",
-            Location = Point(360, 280),
+            Location = Point(360, 210),
             Width = 100
         )
         okBtn.Click.Add(fun _ ->
@@ -588,8 +547,6 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                 result <- Some {
                     Keyword = keywordTextBox.Text.Trim()
                     Replacement = replacementTextBox.Text
-                    CaseSensitive = caseSensitiveCheck.Checked
-                    WholePhrase = wholePhraseCheck.Checked
                 }
                 dlg.DialogResult <- DialogResult.OK
         )
@@ -598,7 +555,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
         // Cancel button
         let cancelBtn = new Button(
             Text = "Cancel",
-            Location = Point(250, 280),
+            Location = Point(250, 210),
             Width = 100,
             Height = 36,
             BackColor = Color.Transparent,
