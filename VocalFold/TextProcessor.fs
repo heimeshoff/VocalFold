@@ -11,7 +11,7 @@ type ProcessingResult =
 /// Mutable storage for the last transcribed message
 let mutable private lastTranscription: string option = None
 
-/// Store the last transcription for "repeat last message" command
+/// Store the last transcription for "repeat message" command
 let storeLastTranscription (text: string) : unit =
     if not (String.IsNullOrWhiteSpace(text)) then
         lastTranscription <- Some text
@@ -119,23 +119,30 @@ let getExampleReplacements () : Settings.KeywordReplacement list =
 /// This is the main entry point that should be used instead of processTranscription directly
 let processTranscriptionWithCommands (text: string) (replacements: Settings.KeywordReplacement list) : ProcessingResult =
     try
-        // Check for special built-in commands (case-insensitive)
-        let normalizedText = text.Trim().ToLowerInvariant()
+        // Check for special built-in commands (case-insensitive, punctuation removed)
+        let normalizedText =
+            let lowered = text.Trim().ToLowerInvariant()
+            // Remove all punctuation, keeping only letters, numbers, and spaces
+            let noPunctuation = Regex.Replace(lowered, @"[^\w\s]", "")
+            // Collapse multiple spaces into single space
+            let singleSpaced = Regex.Replace(noPunctuation, @"\s+", " ")
+            singleSpaced.Trim()
 
-        // Check for "open vocalfold settings" command
-        if normalizedText.Contains("open vocalfold settings") ||
-           normalizedText.Contains("open vocal fold settings") then
-            Logger.info "Detected 'open vocalfold settings' command"
+        Logger.debug (sprintf "Normalized text for command matching: \"%s\"" normalizedText)
+
+        // Check for "open settings" command (exact match after normalization)
+        if normalizedText = "open settings" then
+            Logger.info "Detected 'open settings' command"
             OpenSettings
-        // Check for "repeat last message" command
-        elif normalizedText.Contains("repeat last message") then
-            Logger.info "Detected 'repeat last message' command"
+        // Check for "repeat message" command (exact match after normalization)
+        elif normalizedText = "repeat message" then
+            Logger.info "Detected 'repeat message' command"
             match lastTranscription with
             | Some lastText ->
                 Logger.info (sprintf "Repeating last transcription: \"%s\""
                     (if lastText.Length > 50 then lastText.Substring(0, 47) + "..." else lastText))
-                // Replace "repeat last message" with the actual last transcription
-                let pattern = @"\brepeat last message\b"
+                // Replace "repeat message" with the actual last transcription
+                let pattern = @"\brepeat message\b"
                 let regex = new Regex(pattern, RegexOptions.IgnoreCase)
                 let resultText = regex.Replace(text, lastText)
                 // Process the result text with keyword replacements

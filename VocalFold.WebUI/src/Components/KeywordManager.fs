@@ -182,7 +182,7 @@ let private commandsSection () =
                                         prop.children [
                                             Html.span [
                                                 prop.className "font-mono text-primary font-medium"
-                                                prop.text "open vocalfold settings"
+                                                prop.text "open settings"
                                             ]
                                         ]
                                     ]
@@ -205,7 +205,7 @@ let private commandsSection () =
                                         prop.children [
                                             Html.span [
                                                 prop.className "font-mono text-primary font-medium"
-                                                prop.text "repeat last message"
+                                                prop.text "repeat message"
                                             ]
                                         ]
                                     ]
