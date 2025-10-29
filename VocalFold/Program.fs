@@ -206,10 +206,12 @@ let main argv =
                 // Open settings dialog
                 match SettingsDialog.show currentSettings with
                 | SettingsDialog.Accepted newSettings ->
-                    // Check if hotkey changed
+                    // Check what changed
                     let hotkeyChanged =
                         newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
                         newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
+
+                    let modelChanged = newSettings.ModelSize <> currentSettings.ModelSize
 
                     // Update settings
                     currentSettings <- newSettings
@@ -226,8 +228,10 @@ let main argv =
                                     TrayIcon.notifyInfo tray (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
                                 else
                                     TrayIcon.notifyError tray "Failed to register new hotkey!"
-                            else
+                            elif modelChanged then
                                 TrayIcon.notifyInfo tray "Settings saved. Restart required for model changes."
+                            else
+                                TrayIcon.notifyInfo tray "Settings saved and applied."
                         | None -> ()
                 | SettingsDialog.Cancelled ->
                     () // Do nothing
