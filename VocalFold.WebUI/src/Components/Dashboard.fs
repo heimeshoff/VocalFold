@@ -208,7 +208,7 @@ let view (status: LoadingState<AppStatus>) (settings: LoadingState<AppSettings>)
             | LoadingState.Loaded s -> statusCard s dispatch
             | LoadingState.Loading -> loadingCard "Status"
             | LoadingState.Error err -> errorCard "Status" err
-            | LoadingState.NotStarted -> Html.none
+            | LoadingState.NotStarted -> loadingCard "Status"
 
             // Grid for Quick Stats and Quick Actions
             Html.div [
@@ -218,7 +218,7 @@ let view (status: LoadingState<AppStatus>) (settings: LoadingState<AppSettings>)
                     | LoadingState.Loaded s -> quickStatsCard s
                     | LoadingState.Loading -> loadingCard "Quick Stats"
                     | LoadingState.Error err -> errorCard "Quick Stats" err
-                    | LoadingState.NotStarted -> Html.none
+                    | LoadingState.NotStarted -> loadingCard "Quick Stats"
 
                     quickActionsCard dispatch
                 ]

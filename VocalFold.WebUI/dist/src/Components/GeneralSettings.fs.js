@@ -1,13 +1,13 @@
 import { isNullOrEmpty, join, printf, toText } from "../../fable_modules/fable-library-js.4.25.0/String.js";
+import { createElement } from "react";
+import React from "react";
 import { React_createDisposable_3A5B6456, useReact_useEffect_7331F961 } from "../../fable_modules/Feliz.2.7.0/React.fs.js";
 import { AppSettings, Msg } from "../Types.fs.js";
 import { CardProps, card } from "./Card.fs.js";
-import { createElement } from "react";
 import { createObj } from "../../fable_modules/fable-library-js.4.25.0/Util.js";
 import { singleton, append, delay, toList } from "../../fable_modules/fable-library-js.4.25.0/Seq.js";
 import { Interop_reactApi } from "../../fable_modules/Feliz.2.7.0/./Interop.fs.js";
 import { map, singleton as singleton_1, ofArray } from "../../fable_modules/fable-library-js.4.25.0/List.js";
-import { defaultOf } from "../../fable_modules/Feliz.2.7.0/../fable-library-js.4.25.0/Util.js";
 
 export function getKeyDisplayName(keyCode) {
     let k, k_1;
@@ -87,8 +87,12 @@ export function formatHotkey(modifiers, key) {
     }
 }
 
-function hotkeyRecorder(isRecording, currentKey, currentModifiers, dispatch) {
+function hotkeyRecorder(hotkeyRecorderInputProps) {
     let elems_4;
+    const dispatch = hotkeyRecorderInputProps.dispatch;
+    const currentModifiers = hotkeyRecorderInputProps.currentModifiers;
+    const currentKey = hotkeyRecorderInputProps.currentKey;
+    const isRecording = hotkeyRecorderInputProps.isRecording;
     useReact_useEffect_7331F961(() => {
         if (isRecording) {
             const handler = (e_1) => {
@@ -205,12 +209,12 @@ function typingSpeedSelector(currentSpeed, dispatch, settings) {
 }
 
 export function view(settings, isRecordingHotkey, dispatch) {
-    let elems_4;
-    return createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_4 = toList(delay(() => append(singleton(createElement("h2", {
+    let elems_5;
+    return createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_5 = toList(delay(() => append(singleton(createElement("h2", {
         className: "text-3xl font-bold text-text-primary mb-6",
         children: "General Settings",
     })), delay(() => {
-        let elems_2, elems_3, elems_1, elems;
+        let elems_2, elems_3, elems_4, elems_1, elems;
         const matchValue = settings;
         switch (matchValue.tag) {
             case 1:
@@ -223,12 +227,19 @@ export function view(settings, isRecordingHotkey, dispatch) {
                     children: toText(printf("Error loading settings: %s"))(matchValue.fields[0]),
                 })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_3))])]))));
             case 0:
-                return singleton(defaultOf());
+                return singleton(createElement("div", createObj(ofArray([["className", "flex items-center justify-center py-12"], (elems_4 = [createElement("div", {
+                    className: "animate-spin rounded-full h-12 w-12 border-b-2 border-primary",
+                })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_4))])]))));
             default: {
                 const s = matchValue.fields[0];
-                return singleton(createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_1 = [hotkeyRecorder(isRecordingHotkey, s.HotkeyKey, s.HotkeyModifiers, dispatch), createElement("div", createObj(ofArray([["className", "grid grid-cols-1 md:grid-cols-2 gap-6"], (elems = [modelSelector(s.ModelSize, dispatch, s), typingSpeedSelector(s.TypingSpeed, dispatch, s)], ["children", Interop_reactApi.Children.toArray(Array.from(elems))])])))], ["children", Interop_reactApi.Children.toArray(Array.from(elems_1))])]))));
+                return singleton(createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_1 = [createElement(hotkeyRecorder, {
+                    isRecording: isRecordingHotkey,
+                    currentKey: s.HotkeyKey,
+                    currentModifiers: s.HotkeyModifiers,
+                    dispatch: dispatch,
+                }), createElement("div", createObj(ofArray([["className", "grid grid-cols-1 md:grid-cols-2 gap-6"], (elems = [modelSelector(s.ModelSize, dispatch, s), typingSpeedSelector(s.TypingSpeed, dispatch, s)], ["children", Interop_reactApi.Children.toArray(Array.from(elems))])])))], ["children", Interop_reactApi.Children.toArray(Array.from(elems_1))])]))));
             }
         }
-    })))), ["children", Interop_reactApi.Children.toArray(Array.from(elems_4))])])));
+    })))), ["children", Interop_reactApi.Children.toArray(Array.from(elems_5))])])));
 }
 

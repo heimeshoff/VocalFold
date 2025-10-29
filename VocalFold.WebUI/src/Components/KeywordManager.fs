@@ -363,7 +363,14 @@ let view (settings: LoadingState<AppSettings>) (editingKeyword: (int * KeywordRe
                     ]
                 ]
             | LoadingState.NotStarted ->
-                Html.none
+                Html.div [
+                    prop.className "flex items-center justify-center py-12"
+                    prop.children [
+                        Html.div [
+                            prop.className "animate-spin rounded-full h-12 w-12 border-b-2 border-primary"
+                        ]
+                    ]
+                ]
 
             // Modal
             if showModal then

@@ -53,6 +53,7 @@ let formatHotkey (modifiers: uint32) (key: uint32) =
 // Hotkey Recorder Component
 // ============================================================================
 
+[<ReactComponent>]
 let private hotkeyRecorder (isRecording: bool) (currentKey: uint32) (currentModifiers: uint32) (dispatch: Msg -> unit) =
     let onKeyDown (e: KeyboardEvent) =
         if isRecording then
@@ -313,6 +314,13 @@ let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (dispat
                     ]
                 ]
             | LoadingState.NotStarted ->
-                Html.none
+                Html.div [
+                    prop.className "flex items-center justify-center py-12"
+                    prop.children [
+                        Html.div [
+                            prop.className "animate-spin rounded-full h-12 w-12 border-b-2 border-primary"
+                        ]
+                    ]
+                ]
         ]
     ]

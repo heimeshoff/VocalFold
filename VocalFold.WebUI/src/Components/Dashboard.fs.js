@@ -6,7 +6,6 @@ import { singleton as singleton_1, length, ofArray } from "../../fable_modules/f
 import { singleton, append, delay, toList } from "../../fable_modules/fable-library-js.4.25.0/Seq.js";
 import { Page, Msg } from "../Types.fs.js";
 import { CardProps, card } from "./Card.fs.js";
-import { defaultOf } from "../../fable_modules/Feliz.2.7.0/../fable-library-js.4.25.0/Util.js";
 
 function statusIndicator(isEnabled) {
     let elems, arg;
@@ -118,11 +117,11 @@ export function view(status, settings, dispatch) {
         children: "Dashboard",
     })), delay(() => {
         let matchValue;
-        return append((matchValue = status, (matchValue.tag === 1) ? singleton(loadingCard("Status")) : ((matchValue.tag === 3) ? singleton(errorCard("Status", matchValue.fields[0])) : ((matchValue.tag === 0) ? singleton(defaultOf()) : singleton(statusCard(matchValue.fields[0], dispatch))))), delay(() => {
+        return append((matchValue = status, (matchValue.tag === 1) ? singleton(loadingCard("Status")) : ((matchValue.tag === 3) ? singleton(errorCard("Status", matchValue.fields[0])) : ((matchValue.tag === 0) ? singleton(loadingCard("Status")) : singleton(statusCard(matchValue.fields[0], dispatch))))), delay(() => {
             let elems;
             return append(singleton(createElement("div", createObj(ofArray([["className", "grid grid-cols-1 md:grid-cols-2 gap-6"], (elems = toList(delay(() => {
                 let matchValue_1;
-                return append((matchValue_1 = settings, (matchValue_1.tag === 1) ? singleton(loadingCard("Quick Stats")) : ((matchValue_1.tag === 3) ? singleton(errorCard("Quick Stats", matchValue_1.fields[0])) : ((matchValue_1.tag === 0) ? singleton(defaultOf()) : singleton(quickStatsCard(matchValue_1.fields[0]))))), delay(() => singleton(quickActionsCard(dispatch))));
+                return append((matchValue_1 = settings, (matchValue_1.tag === 1) ? singleton(loadingCard("Quick Stats")) : ((matchValue_1.tag === 3) ? singleton(errorCard("Quick Stats", matchValue_1.fields[0])) : ((matchValue_1.tag === 0) ? singleton(loadingCard("Quick Stats")) : singleton(quickStatsCard(matchValue_1.fields[0]))))), delay(() => singleton(quickActionsCard(dispatch))));
             })), ["children", Interop_reactApi.Children.toArray(Array.from(elems))])])))), delay(() => {
                 let elems_2, elems_1, children, value_23;
                 return singleton(createElement("div", createObj(ofArray([["className", "bg-primary/10 border border-primary/30 rounded-lg p-4"], (elems_2 = [createElement("div", createObj(ofArray([["className", "flex items-start space-x-3"], (elems_1 = [createElement("div", {

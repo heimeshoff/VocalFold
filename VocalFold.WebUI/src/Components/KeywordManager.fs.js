@@ -126,7 +126,7 @@ function keywordTable(keywords, dispatch, onEdit) {
 }
 
 export function view(settings, editingKeyword, dispatch) {
-    let elems_8;
+    let elems_9;
     const patternInput = useFeliz_React__React_useState_Static_1505(false);
     const setShowModal = patternInput[1];
     const patternInput_1 = useFeliz_React__React_useState_Static_1505(undefined);
@@ -168,7 +168,7 @@ export function view(settings, editingKeyword, dispatch) {
             }
         }
     };
-    return createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_8 = toList(delay(() => {
+    return createElement("div", createObj(ofArray([["className", "space-y-6"], (elems_9 = toList(delay(() => {
         let elems_3;
         return append(singleton(createElement("div", createObj(ofArray([["className", "flex items-center justify-between"], (elems_3 = toList(delay(() => {
             let children;
@@ -226,19 +226,21 @@ export function view(settings, editingKeyword, dispatch) {
             }), createElement("p", createObj(ofArray([["className", "text-text-secondary text-sm"], (value_42 = "When you speak a keyword, it will be automatically replaced with the configured text. For example, saying \'comma\' can be replaced with \',\'. Keywords are matched case-insensitively.", ["children", value_42])])))]), createElement("div", {
                 children: Interop_reactApi.Children.toArray(Array.from(children_2)),
             }))], ["children", Interop_reactApi.Children.toArray(Array.from(elems_4))])])))], ["children", Interop_reactApi.Children.toArray(Array.from(elems_5))])])))), delay(() => {
-                let matchValue_1, elems_6, elems_7;
+                let matchValue_1, elems_6, elems_7, elems_8;
                 return append((matchValue_1 = settings, (matchValue_1.tag === 1) ? singleton(createElement("div", createObj(ofArray([["className", "flex items-center justify-center py-12"], (elems_6 = [createElement("div", {
                     className: "animate-spin rounded-full h-12 w-12 border-b-2 border-primary",
                 })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_6))])])))) : ((matchValue_1.tag === 3) ? singleton(createElement("div", createObj(ofArray([["className", "bg-red-500/10 border border-red-500/30 rounded p-6"], (elems_7 = [createElement("p", {
                     className: "text-red-500",
                     children: toText(printf("Error loading keywords: %s"))(matchValue_1.fields[0]),
-                })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_7))])])))) : ((matchValue_1.tag === 0) ? singleton(defaultOf()) : singleton(keywordTable(matchValue_1.fields[0].KeywordReplacements, dispatch, handleEdit))))), delay(() => (patternInput[0] ? singleton(keywordModal(patternInput_2[0], patternInput_1[0], dispatch, () => {
+                })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_7))])])))) : ((matchValue_1.tag === 0) ? singleton(createElement("div", createObj(ofArray([["className", "flex items-center justify-center py-12"], (elems_8 = [createElement("div", {
+                    className: "animate-spin rounded-full h-12 w-12 border-b-2 border-primary",
+                })], ["children", Interop_reactApi.Children.toArray(Array.from(elems_8))])])))) : singleton(keywordTable(matchValue_1.fields[0].KeywordReplacements, dispatch, handleEdit))))), delay(() => (patternInput[0] ? singleton(keywordModal(patternInput_2[0], patternInput_1[0], dispatch, () => {
                     setShowModal(false);
                     setEditIndex(undefined);
                     setEditKeyword(undefined);
                 })) : empty())));
             }));
         }));
-    })), ["children", Interop_reactApi.Children.toArray(Array.from(elems_8))])])));
+    })), ["children", Interop_reactApi.Children.toArray(Array.from(elems_9))])])));
 }
 
