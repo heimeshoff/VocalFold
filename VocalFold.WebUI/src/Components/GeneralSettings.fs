@@ -52,7 +52,7 @@ let private startWithWindowsToggle (isEnabled: bool) (dispatch: Msg -> unit) (se
 
 let private typingSpeedSelector (currentSpeed: string) (dispatch: Msg -> unit) (settings: AppSettings) =
     let speeds = [
-        ("fast", "Fast (5ms delay)", "Best for quick typing")
+        ("fast", "Fast (no delay)", "Best for quick typing")
         ("normal", "Normal (10ms delay)", "Recommended for most users")
         ("slow", "Slow (20ms delay)", "More reliable for older systems")
     ]

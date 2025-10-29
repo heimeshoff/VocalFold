@@ -19,7 +19,7 @@ type KeywordReplacement = {
 
 /// Typing speed configuration
 type TypingSpeed =
-    | Fast      // 5ms delay
+    | Fast      // 0ms delay
     | Normal    // 10ms delay
     | Slow      // 20ms delay
     | Custom of int  // Custom delay in ms
@@ -27,7 +27,7 @@ type TypingSpeed =
 /// Get the delay in milliseconds for a typing speed
 let getTypingDelay (speed: TypingSpeed) : int =
     match speed with
-    | Fast -> 5
+    | Fast -> 0
     | Normal -> 10
     | Slow -> 20
     | Custom ms -> ms
