@@ -30,6 +30,7 @@ type AppStatus = {
 
 type Page =
     | Dashboard
+    | SystemSettings
     | GeneralSettings
     | KeywordSettings
 

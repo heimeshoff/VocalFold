@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "fable": "dotnet fable",
+    "build": "dotnet fable && vite build",
     "preview": "vite preview",
     "watch": "dotnet fable watch --run npm run dev"
   },

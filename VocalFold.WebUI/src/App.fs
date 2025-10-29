@@ -225,7 +225,12 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                     ]
                                     Html.button [
                                         prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
-                                        prop.text "General Settings"
+                                        prop.text "System"
+                                        prop.onClick (fun _ -> dispatch (NavigateToPage SystemSettings))
+                                    ]
+                                    Html.button [
+                                        prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                        prop.text "General"
                                         prop.onClick (fun _ -> dispatch (NavigateToPage GeneralSettings))
                                     ]
                                     Html.button [
@@ -245,6 +250,8 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             match model.CurrentPage with
                             | Dashboard ->
                                 Components.Dashboard.view model.Status model.Settings dispatch
+                            | SystemSettings ->
+                                Components.SystemSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | GeneralSettings ->
                                 Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | KeywordSettings ->

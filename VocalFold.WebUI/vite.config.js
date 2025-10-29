@@ -5,14 +5,14 @@ import path from 'path';
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  root: './dist',  // Use dist folder as root since Fable outputs there
+  root: './',  // Root is the VocalFold.WebUI folder
   publicDir: path.resolve(__dirname, 'public'),
   build: {
-    outDir: path.resolve(__dirname, 'dist-build'),  // Output to a different directory for production build
+    outDir: path.resolve(__dirname, 'dist-build'),  // Output to dist-build for production
     emptyOutDir: true,  // Clean the build output directory
     sourcemap: false,
     rollupOptions: {
-      input: path.resolve(__dirname, 'dist/index.html'),
+      input: path.resolve(__dirname, 'index.html'),
     }
   },
   server: {

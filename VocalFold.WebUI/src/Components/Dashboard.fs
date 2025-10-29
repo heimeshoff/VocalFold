@@ -111,7 +111,7 @@ let private quickActionsCard dispatch =
                     Html.button [
                         prop.className "px-4 py-3 bg-primary hover:bg-primary-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg"
                         prop.text "Configure Hotkey"
-                        prop.onClick (fun _ -> dispatch (NavigateToPage GeneralSettings))
+                        prop.onClick (fun _ -> dispatch (NavigateToPage SystemSettings))
                     ]
                     Html.button [
                         prop.className "px-4 py-3 bg-secondary hover:bg-secondary-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg"
