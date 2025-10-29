@@ -125,16 +125,10 @@ let main argv =
                                 overlayManager.ShowMuted()
                                 System.Threading.Thread.Sleep(2000)  // Show muted icon for 2 seconds
                                 overlayManager.Hide()
-                                match trayState with
-                                | Some tray -> TrayIcon.notifyWarning tray "Microphone is muted or volume too low"
-                                | None -> ()
                             // Check if we have any samples
                             elif recording.Samples.Length = 0 then
                                 Logger.warning "No audio captured"
                                 overlayManager.Hide()
-                                match trayState with
-                                | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
-                                | None -> ()
                             else
                                 // Show transcribing state IMMEDIATELY (non-blocking)
                                 overlayManager.ShowTranscribing()
@@ -151,9 +145,6 @@ let main argv =
                                         if String.IsNullOrWhiteSpace(transcription) then
                                             Logger.warning "No speech detected in audio"
                                             overlayManager.Hide()
-                                            match trayState with
-                                            | Some tray -> TrayIcon.notifyWarning tray "No speech detected"
-                                            | None -> ()
                                         else
                                             // Process keyword replacements
                                             let processedText = TextProcessor.processTranscription transcription currentSettings.KeywordReplacements

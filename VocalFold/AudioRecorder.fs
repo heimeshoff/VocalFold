@@ -122,13 +122,18 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
     printfn "  📊 Audio levels - Max: %.3f, Avg: %.3f" maxLevel avgLevelNormalized
 
     // Warn if audio is too quiet
-    let isMuted = maxLevel < 0.01f
+    // Use strict threshold to detect actual mute (not just quiet audio)
+    let isMuted = maxLevel < 0.0001f
     if isMuted then
-        printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" maxLevel
+        printfn "  ⚠️  WARNING: Microphone appears to be muted (max: %.4f)" maxLevel
         printfn "     This might indicate:"
+        printfn "     - Microphone is muted"
         printfn "     - Wrong microphone selected"
-        printfn "     - Microphone is muted or volume is too low"
         printfn "     - No audio input detected"
+    // Warn if audio is just quiet (but not muted)
+    elif maxLevel < 0.01f then
+        printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" maxLevel
+        printfn "     Transcription may not work well with such quiet audio"
 
     {
         Samples = totalSamples
@@ -281,8 +286,9 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
         state.CurrentLevel <- bufferMaxLevel
 
         // Real-time mute detection
-        let muteThreshold = 0.01f
-        let buffersToDetectMute = 3  // Need 3 consecutive low buffers to trigger mute
+        // Use a very strict threshold to detect actual mute (not just quiet audio)
+        let muteThreshold = 0.0001f  // Only trigger for essentially zero audio (actual mute)
+        let buffersToDetectMute = 3  // Need 3 consecutive silent buffers to trigger mute
 
         if bufferMaxLevel < muteThreshold then
             // Audio is low, increment counter
@@ -383,13 +389,18 @@ let stopRecording (state: RecordingState) : RecordingResult =
     printfn "  📊 Audio levels - Max: %.3f, Avg: %.3f" state.MaxLevel avgLevelNormalized
 
     // Use real-time mute state if available, otherwise fall back to checking max level
-    let isMuted = state.IsMutedRealtime || state.MaxLevel < 0.01f
+    // Use strict threshold to detect actual mute (not just quiet audio)
+    let isMuted = state.IsMutedRealtime || state.MaxLevel < 0.0001f
     if isMuted then
-        printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" state.MaxLevel
+        printfn "  ⚠️  WARNING: Microphone appears to be muted (max: %.4f)" state.MaxLevel
         printfn "     This might indicate:"
+        printfn "     - Microphone is muted"
         printfn "     - Wrong microphone selected"
-        printfn "     - Microphone is muted or volume is too low"
         printfn "     - No audio input detected"
+    // Warn if audio is just quiet (but not muted)
+    elif state.MaxLevel < 0.01f then
+        printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" state.MaxLevel
+        printfn "     Transcription may not work well with such quiet audio"
 
     // Warn if recording is too short
     if duration < 0.3 then
