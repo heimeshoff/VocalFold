@@ -9,6 +9,7 @@ open System.Collections.Generic
 type RecordingResult = {
     Samples: float32[]
     SampleRate: int
+    IsMuted: bool  // True if microphone was muted (audio level too low)
 }
 
 // State for active recording
@@ -20,9 +21,12 @@ type RecordingState = {
     mutable AvgLevel: float32
     mutable SampleCount: int
     mutable CurrentLevel: float32  // Current instantaneous level for visualization
+    mutable IsMutedRealtime: bool  // Track if currently muted in real-time
+    mutable LowAudioBufferCount: int  // Count consecutive buffers with low audio
     RecordingStopped: System.Threading.ManualResetEvent
     OnLevelUpdate: (float32 -> unit) option  // Callback for real-time level updates
     OnSpectrumUpdate: (float32[] -> unit) option  // Callback for frequency spectrum (5 bands)
+    OnMuteStateChanged: (bool -> unit) option  // Callback when mute state changes (true = muted, false = unmuted)
 }
 
 // List all available input devices
@@ -118,7 +122,8 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
     printfn "  📊 Audio levels - Max: %.3f, Avg: %.3f" maxLevel avgLevelNormalized
 
     // Warn if audio is too quiet
-    if maxLevel < 0.01f then
+    let isMuted = maxLevel < 0.01f
+    if isMuted then
         printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" maxLevel
         printfn "     This might indicate:"
         printfn "     - Wrong microphone selected"
@@ -128,6 +133,7 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
     {
         Samples = totalSamples
         SampleRate = sampleRate
+        IsMuted = isMuted
     }
 
 // Calculate frequency spectrum from audio samples (5 bands for 5 bars)
@@ -213,7 +219,7 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
         normalized
 
 // Start recording (non-blocking, returns RecordingState)
-let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) option) (onSpectrumUpdate: (float32[] -> unit) option) : RecordingState =
+let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) option) (onSpectrumUpdate: (float32[] -> unit) option) (onMuteStateChanged: (bool -> unit) option) : RecordingState =
     match deviceNumber with
     | Some d -> printfn "🎤 Recording started from device %d..." d
     | None -> printfn "🎤 Recording started from default device..."
@@ -247,9 +253,12 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
         AvgLevel = 0.0f
         SampleCount = 0
         CurrentLevel = 0.0f
+        IsMutedRealtime = false
+        LowAudioBufferCount = 0
         RecordingStopped = new System.Threading.ManualResetEvent(false)
         OnLevelUpdate = onLevelUpdate
         OnSpectrumUpdate = onSpectrumUpdate
+        OnMuteStateChanged = onMuteStateChanged
     }
 
     // Data available event handler
@@ -270,6 +279,36 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
 
         // Update current level (use buffer max for visualization)
         state.CurrentLevel <- bufferMaxLevel
+
+        // Real-time mute detection
+        let muteThreshold = 0.01f
+        let buffersToDetectMute = 3  // Need 3 consecutive low buffers to trigger mute
+
+        if bufferMaxLevel < muteThreshold then
+            // Audio is low, increment counter
+            state.LowAudioBufferCount <- state.LowAudioBufferCount + 1
+
+            // If we've had enough consecutive low buffers and not already marked as muted
+            if state.LowAudioBufferCount >= buffersToDetectMute && not state.IsMutedRealtime then
+                state.IsMutedRealtime <- true
+                Logger.warning "Microphone appears to be muted (real-time detection)"
+                // Notify about mute state change
+                match state.OnMuteStateChanged with
+                | Some callback -> callback true
+                | None -> ()
+        else
+            // Audio is good, reset counter
+            if state.LowAudioBufferCount > 0 then
+                state.LowAudioBufferCount <- 0
+
+                // If we were muted and now have audio, unmute
+                if state.IsMutedRealtime then
+                    state.IsMutedRealtime <- false
+                    Logger.info "Microphone unmuted (real-time detection)"
+                    // Notify about mute state change
+                    match state.OnMuteStateChanged with
+                    | Some callback -> callback false
+                    | None -> ()
 
         // Call level update callback if provided
         match state.OnLevelUpdate with
@@ -343,8 +382,9 @@ let stopRecording (state: RecordingState) : RecordingResult =
         totalSamples.Length
     printfn "  📊 Audio levels - Max: %.3f, Avg: %.3f" state.MaxLevel avgLevelNormalized
 
-    // Warn if audio is too quiet
-    if state.MaxLevel < 0.01f then
+    // Use real-time mute state if available, otherwise fall back to checking max level
+    let isMuted = state.IsMutedRealtime || state.MaxLevel < 0.01f
+    if isMuted then
         printfn "  ⚠️  WARNING: Audio level is very low (max: %.4f)" state.MaxLevel
         printfn "     This might indicate:"
         printfn "     - Wrong microphone selected"
@@ -359,4 +399,5 @@ let stopRecording (state: RecordingState) : RecordingResult =
     {
         Samples = totalSamples
         SampleRate = sampleRate
+        IsMuted = isMuted
     }

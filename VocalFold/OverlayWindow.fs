@@ -54,6 +54,7 @@ type OverlayState =
     | Ready          // Overlay visible, waiting for recording to start
     | Recording      // Recording and detecting voice
     | Transcribing   // Processing transcription
+    | Muted          // Microphone is muted (audio level too low)
     | Error
 
 type OverlayWindow() as this =
@@ -75,6 +76,10 @@ type OverlayWindow() as this =
     )
     let waveformBars = Array.init 5 (fun _ -> new Rectangle())
     let transcribingDots = Array.init 3 (fun _ -> new Ellipse())
+
+    // Muted microphone icon elements
+    let mutedMicIcon = new Path()
+    let mutedMicSlash = new Line()
 
     // Animation timer
     let animationTimer = new DispatcherTimer(Interval = TimeSpan.FromMilliseconds(33.0)) // ~30 fps
@@ -103,6 +108,9 @@ type OverlayWindow() as this =
 
         // Create transcribing dots (initially hidden)
         this.createTranscribingDots()
+
+        // Create muted microphone icon (initially hidden)
+        this.createMutedMicIcon()
 
         // Set content
         this.Content <- canvas
@@ -153,6 +161,53 @@ type OverlayWindow() as this =
             Canvas.SetTop(dot, centerY - dotSize / 2.0)
 
             canvas.Children.Add(dot) |> ignore
+
+    member private this.createMutedMicIcon() =
+        // Create a simple microphone icon using Path geometry
+        // Microphone shape: rounded rectangle for body + small rectangle for stand
+        let micGeometry = new PathGeometry()
+
+        // Create microphone body (rounded capsule shape)
+        let bodyFigure = new PathFigure()
+        bodyFigure.StartPoint <- Point(60.0, 20.0)  // Centered at x=60, starts at top
+
+        // Draw rounded microphone body
+        let bodySegments = [
+            ArcSegment(Point(60.0, 35.0), Size(8.0, 7.5), 0.0, false, SweepDirection.Clockwise, true) :> PathSegment
+            LineSegment(Point(52.0, 35.0), true) :> PathSegment
+            ArcSegment(Point(52.0, 20.0), Size(8.0, 7.5), 0.0, false, SweepDirection.Clockwise, true) :> PathSegment
+            LineSegment(Point(60.0, 20.0), true) :> PathSegment
+        ]
+
+        bodySegments |> List.iter (fun seg -> bodyFigure.Segments.Add(seg))
+        micGeometry.Figures.Add(bodyFigure)
+
+        // Add stand/base
+        let standFigure = new PathFigure()
+        standFigure.StartPoint <- Point(56.0, 35.0)
+        standFigure.Segments.Add(LineSegment(Point(56.0, 38.0), true))
+        standFigure.Segments.Add(ArcSegment(Point(56.0, 40.0), Size(6.0, 6.0), 0.0, false, SweepDirection.Clockwise, true))
+        standFigure.Segments.Add(LineSegment(Point(50.0, 40.0), true))
+        standFigure.Segments.Add(LineSegment(Point(62.0, 40.0), true))
+        micGeometry.Figures.Add(standFigure)
+
+        mutedMicIcon.Data <- micGeometry
+        mutedMicIcon.Stroke <- Brushes.Gray
+        mutedMicIcon.StrokeThickness <- 2.0
+        mutedMicIcon.Fill <- Brushes.Transparent
+        mutedMicIcon.Visibility <- Visibility.Collapsed
+
+        // Create diagonal slash line
+        mutedMicSlash.X1 <- 48.0
+        mutedMicSlash.Y1 <- 18.0
+        mutedMicSlash.X2 <- 64.0
+        mutedMicSlash.Y2 <- 42.0
+        mutedMicSlash.Stroke <- Brushes.Gray
+        mutedMicSlash.StrokeThickness <- 2.5
+        mutedMicSlash.Visibility <- Visibility.Collapsed
+
+        canvas.Children.Add(mutedMicIcon) |> ignore
+        canvas.Children.Add(mutedMicSlash) |> ignore
 
     member private this.updateAnimation() =
         match currentState with
@@ -221,6 +276,8 @@ type OverlayWindow() as this =
                 bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
             )
             transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+            mutedMicIcon.Visibility <- Visibility.Collapsed
+            mutedMicSlash.Visibility <- Visibility.Collapsed
             // Start animation timer in Ready state so it's running when bars appear
             animationTimer.Start()
 
@@ -232,6 +289,8 @@ type OverlayWindow() as this =
                 bar.Visibility <- Visibility.Visible  // Now visible
             )
             transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+            mutedMicIcon.Visibility <- Visibility.Collapsed
+            mutedMicSlash.Visibility <- Visibility.Collapsed
 
         | Transcribing ->
             // Green background, hide bars and show animated dots
@@ -241,6 +300,19 @@ type OverlayWindow() as this =
                 bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
             )
             transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Visible)
+            mutedMicIcon.Visibility <- Visibility.Collapsed
+            mutedMicSlash.Visibility <- Visibility.Collapsed
+
+        | Muted ->
+            // Gray background, show muted microphone icon
+            backgroundRect.Fill <- new SolidColorBrush(Color.FromArgb(200uy, 80uy, 80uy, 80uy)) // Gray background
+            waveformBars |> Array.iter (fun bar ->
+                bar.Visibility <- Visibility.Collapsed
+                bar.BeginAnimation(Rectangle.HeightProperty, null)  // Stop any animation
+            )
+            transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+            mutedMicIcon.Visibility <- Visibility.Visible
+            mutedMicSlash.Visibility <- Visibility.Visible
 
         | Error ->
             // Red for error
@@ -250,6 +322,8 @@ type OverlayWindow() as this =
                 bar.Visibility <- Visibility.Visible
             )
             transcribingDots |> Array.iter (fun dot -> dot.Visibility <- Visibility.Collapsed)
+            mutedMicIcon.Visibility <- Visibility.Collapsed
+            mutedMicSlash.Visibility <- Visibility.Collapsed
 
         | Hidden ->
             ()
@@ -397,6 +471,15 @@ type OverlayManager() =
             // Use BeginInvoke for non-blocking UI update
             window.Dispatcher.BeginInvoke(fun () ->
                 window.ShowOverlay(Transcribing)
+            ) |> ignore
+        | None -> ()
+
+    member this.ShowMuted() =
+        match overlayWindow with
+        | Some window ->
+            // Use BeginInvoke for non-blocking UI update
+            window.Dispatcher.BeginInvoke(fun () ->
+                window.ShowOverlay(Muted)
             ) |> ignore
         | None -> ()
 

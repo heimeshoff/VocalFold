@@ -68,14 +68,22 @@ let main argv =
                         // Show overlay in ready state immediately (transparent background)
                         overlayManager.ShowReady()
 
-                        // Start recording with level and spectrum update callbacks
+                        // Start recording with level, spectrum, and mute state callbacks
                         let onLevelUpdate level =
                             overlayManager.UpdateLevel(float level)
 
                         let onSpectrumUpdate spectrum =
                             overlayManager.UpdateSpectrum(spectrum)
 
-                        let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate) (Some onSpectrumUpdate)
+                        let onMuteStateChanged isMuted =
+                            if isMuted then
+                                Logger.debug "Switching overlay to muted state (real-time)"
+                                overlayManager.ShowMuted()
+                            else
+                                Logger.debug "Switching overlay back to recording state (real-time)"
+                                overlayManager.ShowReady()
+
+                        let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate) (Some onSpectrumUpdate) (Some onMuteStateChanged)
                         currentRecording <- Some state
                         Logger.info "Recording started successfully"
                     with
@@ -110,17 +118,27 @@ let main argv =
                             currentRecording <- None
                             Logger.info (sprintf "Recording stopped. Captured %d samples" recording.Samples.Length)
 
-                            // Show transcribing state IMMEDIATELY (non-blocking)
-                            overlayManager.ShowTranscribing()
-
+                            // Check if microphone was muted
+                            if recording.IsMuted then
+                                Logger.warning "Microphone is muted or audio level too low"
+                                // Ensure muted overlay is showing (it should already be if detected in real-time)
+                                overlayManager.ShowMuted()
+                                System.Threading.Thread.Sleep(2000)  // Show muted icon for 2 seconds
+                                overlayManager.Hide()
+                                match trayState with
+                                | Some tray -> TrayIcon.notifyWarning tray "Microphone is muted or volume too low"
+                                | None -> ()
                             // Check if we have any samples
-                            if recording.Samples.Length = 0 then
+                            elif recording.Samples.Length = 0 then
                                 Logger.warning "No audio captured"
                                 overlayManager.Hide()
                                 match trayState with
                                 | Some tray -> TrayIcon.notifyWarning tray "No audio captured"
                                 | None -> ()
                             else
+                                // Show transcribing state IMMEDIATELY (non-blocking)
+                                overlayManager.ShowTranscribing()
+
                                 // Run transcription asynchronously on background thread
                                 async {
                                     try
