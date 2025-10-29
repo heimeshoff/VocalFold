@@ -17,6 +17,7 @@
     <Compile Include="HotkeyManager.fs" />
     <Compile Include="ModernTheme.fs" />
     <Compile Include="SettingsDialog.fs" />
+    <Compile Include="WebServer.fs" />
     <Compile Include="TrayIcon.fs" />
     <Compile Include="OverlayWindow.fs" />
     <Compile Include="Program.fs" />
@@ -28,6 +29,7 @@
     <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.7.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
+    <PackageReference Include="Giraffe" Version="6.4.0" />
   </ItemGroup>
 
   <ItemGroup>

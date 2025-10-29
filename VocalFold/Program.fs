@@ -53,6 +53,7 @@ let main argv =
         let mutable isEnabled = currentSettings.IsEnabled
         let mutable shouldExit = false
         let mutable trayState: TrayIcon.TrayState option = None
+        let mutable webServerState: WebServer.ServerState option = None
 
         // Create overlay manager
         let overlayManager = OverlayWindow.OverlayManager()
@@ -204,21 +205,26 @@ let main argv =
                 currentSettings <- { currentSettings with IsEnabled = enabled }
                 Settings.save currentSettings |> ignore
             OnSettings = fun () ->
-                // Open settings dialog
-                match SettingsDialog.show currentSettings with
-                | SettingsDialog.Accepted newSettings ->
-                    // Check what changed
-                    let hotkeyChanged =
-                        newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
-                        newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
+                // Launch web-based settings UI
+                try
+                    Logger.info "Opening web-based settings UI..."
 
-                    let modelChanged = newSettings.ModelSize <> currentSettings.ModelSize
+                    // Callback for when settings change via web UI
+                    let onSettingsChanged (newSettings: Settings.AppSettings) =
+                        Logger.info "Settings changed via web UI"
 
-                    // Update settings
-                    currentSettings <- newSettings
+                        // Check what changed
+                        let hotkeyChanged =
+                            newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
+                            newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
 
-                    // Save settings
-                    if Settings.save currentSettings then
+                        let enabledChanged = newSettings.IsEnabled <> currentSettings.IsEnabled
+
+                        // Update current settings
+                        currentSettings <- newSettings
+                        isEnabled <- newSettings.IsEnabled
+
+                        // Apply changes
                         match trayState with
                         | Some tray ->
                             if hotkeyChanged then
@@ -226,16 +232,46 @@ let main argv =
                                 HotkeyManager.uninstallKeyboardHook() |> ignore
                                 let hookInstalled = HotkeyManager.installKeyboardHook onKeyDown onKeyUp currentSettings.HotkeyKey currentSettings.HotkeyModifiers
                                 if hookInstalled then
-                                    TrayIcon.notifyInfo tray (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
+                                    Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
                                 else
-                                    TrayIcon.notifyError tray "Failed to register new hotkey!"
-                            elif modelChanged then
-                                TrayIcon.notifyInfo tray "Settings saved. Restart required for model changes."
-                            else
-                                TrayIcon.notifyInfo tray "Settings saved and applied."
+                                    Logger.error "Failed to register new hotkey!"
+
+                            if enabledChanged then
+                                // Update tray icon state
+                                tray.IsEnabled <- newSettings.IsEnabled
+                                Logger.info (sprintf "Voice input %s" (if newSettings.IsEnabled then "enabled" else "disabled"))
                         | None -> ()
-                | SettingsDialog.Cancelled ->
-                    () // Do nothing
+
+                    match webServerState with
+                    | Some state ->
+                        // Server already running, just open browser
+                        Logger.info "Web server already running, opening browser..."
+                        let url = WebServer.getUrl state
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
+                    | None ->
+                        // Start web server
+                        Logger.info "Starting web server..."
+                        match trayState with
+                        | Some tray -> TrayIcon.notifyInfo tray "Opening settings..."
+                        | None -> ()
+
+                        let serverConfig: WebServer.ServerConfig = {
+                            OnSettingsChanged = onSettingsChanged
+                        }
+
+                        let state = WebServer.start serverConfig |> Async.RunSynchronously
+                        webServerState <- Some state
+
+                        // Open browser to settings page
+                        let url = WebServer.getUrl state
+                        Logger.info (sprintf "Opening browser to: %s" url)
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url, UseShellExecute = true)) |> ignore
+                with
+                | ex ->
+                    Logger.logException ex "Error opening settings UI"
+                    match trayState with
+                    | Some tray -> TrayIcon.notifyError tray "Failed to open settings"
+                    | None -> ()
         }
 
         let tray = TrayIcon.create trayConfig
@@ -257,6 +293,16 @@ let main argv =
                 // Cleanup
                 Logger.info "Shutting down application..."
                 HotkeyManager.uninstallKeyboardHook() |> ignore
+
+                // Stop web server if running
+                match webServerState with
+                | Some state ->
+                    try
+                        Logger.info "Stopping web server..."
+                        WebServer.stop state |> Async.RunSynchronously
+                    with
+                    | ex -> Logger.logException ex "Error stopping web server"
+                | None -> ()
 
                 // Clean up any active recording
                 match currentRecording with

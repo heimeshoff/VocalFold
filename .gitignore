@@ -57,3 +57,4 @@ TestResult.xml
 nunit-*.xml
 .idea
 .claude/settings.local.json
+VocalFold.WebUI/node_modules
