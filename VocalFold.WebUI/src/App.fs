@@ -82,14 +82,6 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | StatusLoaded (Result.Error err) ->
         { model with Status = LoadingState.Error err }, Cmd.none
 
-    | ToggleEnabled ->
-        match model.Settings with
-        | LoadingState.Loaded settings ->
-            let updatedSettings = { settings with IsEnabled = not settings.IsEnabled }
-            model, Cmd.ofMsg (UpdateSettings updatedSettings)
-        | _ ->
-            model, Cmd.none
-
     | StartRecordingHotkey ->
         { model with IsRecordingHotkey = true; PendingHotkey = None }, Cmd.none
 

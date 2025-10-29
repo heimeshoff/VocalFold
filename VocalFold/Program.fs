@@ -46,11 +46,9 @@ let main argv =
         Logger.info "Loaded settings:"
         Logger.info (sprintf "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings))
         Logger.info (sprintf "   Model: %s" currentSettings.ModelSize)
-        Logger.info (sprintf "   Enabled: %b" currentSettings.IsEnabled)
 
         // Mutable state
         let mutable currentRecording: AudioRecorder.RecordingState option = None
-        let mutable isEnabled = currentSettings.IsEnabled
         let mutable shouldExit = false
         let mutable trayState: TrayIcon.TrayState option = None
         let mutable webServerState: WebServer.ServerState option = None
@@ -61,9 +59,7 @@ let main argv =
         // Key down callback - Start recording
         let onKeyDown () =
             try
-                if not isEnabled then
-                    Logger.debug "Hotkey pressed but application is disabled"
-                elif currentRecording.IsNone then
+                if currentRecording.IsNone then
                     Logger.info "Starting recording..."
                     try
                         // Show overlay in ready state immediately (transparent background)
@@ -106,87 +102,84 @@ let main argv =
         // Key up callback - Stop recording and transcribe
         let onKeyUp () =
             try
-                if not isEnabled then
-                    Logger.debug "Key released but application is disabled"
-                else
-                    match currentRecording with
-                    | Some state ->
-                        try
-                            Logger.info "Stopping recording..."
+                match currentRecording with
+                | Some state ->
+                    try
+                        Logger.info "Stopping recording..."
 
-                            // Stop recording first
-                            let recording = AudioRecorder.stopRecording state
-                            currentRecording <- None
-                            Logger.info (sprintf "Recording stopped. Captured %d samples" recording.Samples.Length)
+                        // Stop recording first
+                        let recording = AudioRecorder.stopRecording state
+                        currentRecording <- None
+                        Logger.info (sprintf "Recording stopped. Captured %d samples" recording.Samples.Length)
 
-                            // Check if microphone was muted
-                            if recording.IsMuted then
-                                Logger.warning "Microphone is muted or audio level too low"
-                                // Ensure muted overlay is showing (it should already be if detected in real-time)
-                                overlayManager.ShowMuted()
-                                System.Threading.Thread.Sleep(2000)  // Show muted icon for 2 seconds
-                                overlayManager.Hide()
-                            // Check if we have any samples
-                            elif recording.Samples.Length = 0 then
-                                Logger.warning "No audio captured"
-                                overlayManager.Hide()
-                            else
-                                // Show transcribing state IMMEDIATELY (non-blocking)
-                                overlayManager.ShowTranscribing()
-
-                                // Run transcription asynchronously on background thread
-                                async {
-                                    try
-                                        // Transcribe the audio
-                                        Logger.info "Starting transcription..."
-                                        let! transcription = whisperService.Transcribe(recording.Samples)
-
-                                        Logger.info (sprintf "Transcription result: \"%s\"" transcription)
-
-                                        if String.IsNullOrWhiteSpace(transcription) then
-                                            Logger.warning "No speech detected in audio"
-                                            overlayManager.Hide()
-                                        else
-                                            // Process keyword replacements
-                                            let processedText = TextProcessor.processTranscription transcription currentSettings.KeywordReplacements
-
-                                            // Hide overlay BEFORE typing so input goes to the correct window
-                                            Logger.debug "Hiding overlay before typing"
-                                            overlayManager.Hide()
-
-                                            // Wait for overlay fade-out animation (300ms) + extra time for focus to return
-                                            Logger.debug "Waiting for overlay to hide and focus to return..."
-                                            do! Async.Sleep(400)
-
-                                            // Type the processed text
-                                            Logger.info "Typing transcribed text..."
-                                            TextInput.typeTextWithSettings processedText currentSettings
-                                            Logger.info "Text typing completed"
-                                            Logger.info "Transcription flow completed successfully"
-                                    with
-                                    | ex ->
-                                        Logger.logException ex "Error during transcription"
-                                        overlayManager.ShowError()
-                                        do! Async.Sleep(1000)
-                                        overlayManager.Hide()
-                                        match trayState with
-                                        | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
-                                        | None -> ()
-                                } |> Async.Start  // Start on background thread, don't block
-
-                        with
-                        | ex ->
-                            Logger.logException ex "Error during recording stop"
-                            currentRecording <- None
-                            overlayManager.ShowError()
-                            System.Threading.Thread.Sleep(1000)
+                        // Check if microphone was muted
+                        if recording.IsMuted then
+                            Logger.warning "Microphone is muted or audio level too low"
+                            // Ensure muted overlay is showing (it should already be if detected in real-time)
+                            overlayManager.ShowMuted()
+                            System.Threading.Thread.Sleep(2000)  // Show muted icon for 2 seconds
                             overlayManager.Hide()
-                            match trayState with
-                            | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
-                            | None -> ()
+                        // Check if we have any samples
+                        elif recording.Samples.Length = 0 then
+                            Logger.warning "No audio captured"
+                            overlayManager.Hide()
+                        else
+                            // Show transcribing state IMMEDIATELY (non-blocking)
+                            overlayManager.ShowTranscribing()
 
-                    | None ->
-                        Logger.debug "Key released but no active recording"
+                            // Run transcription asynchronously on background thread
+                            async {
+                                try
+                                    // Transcribe the audio
+                                    Logger.info "Starting transcription..."
+                                    let! transcription = whisperService.Transcribe(recording.Samples)
+
+                                    Logger.info (sprintf "Transcription result: \"%s\"" transcription)
+
+                                    if String.IsNullOrWhiteSpace(transcription) then
+                                        Logger.warning "No speech detected in audio"
+                                        overlayManager.Hide()
+                                    else
+                                        // Process keyword replacements
+                                        let processedText = TextProcessor.processTranscription transcription currentSettings.KeywordReplacements
+
+                                        // Hide overlay BEFORE typing so input goes to the correct window
+                                        Logger.debug "Hiding overlay before typing"
+                                        overlayManager.Hide()
+
+                                        // Wait for overlay fade-out animation (300ms) + extra time for focus to return
+                                        Logger.debug "Waiting for overlay to hide and focus to return..."
+                                        do! Async.Sleep(400)
+
+                                        // Type the processed text
+                                        Logger.info "Typing transcribed text..."
+                                        TextInput.typeTextWithSettings processedText currentSettings
+                                        Logger.info "Text typing completed"
+                                        Logger.info "Transcription flow completed successfully"
+                                with
+                                | ex ->
+                                    Logger.logException ex "Error during transcription"
+                                    overlayManager.ShowError()
+                                    do! Async.Sleep(1000)
+                                    overlayManager.Hide()
+                                    match trayState with
+                                    | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
+                                    | None -> ()
+                            } |> Async.Start  // Start on background thread, don't block
+
+                    with
+                    | ex ->
+                        Logger.logException ex "Error during recording stop"
+                        currentRecording <- None
+                        overlayManager.ShowError()
+                        System.Threading.Thread.Sleep(1000)
+                        overlayManager.Hide()
+                        match trayState with
+                        | Some tray -> TrayIcon.notifyError tray ("Error: " + ex.Message)
+                        | None -> ()
+
+                | None ->
+                    Logger.debug "Key released but no active recording"
             with
             | ex ->
                 Logger.logException ex "Unhandled exception in onKeyUp"
@@ -194,16 +187,10 @@ let main argv =
         // Create tray icon
         let trayConfig : TrayIcon.TrayConfig = {
             ApplicationName = "VocalFold"
-            InitialEnabled = currentSettings.IsEnabled
             OnExit = fun () ->
                 Logger.info "User requested exit via tray icon"
                 shouldExit <- true
                 HotkeyManager.exitMessageLoop()
-            OnToggleEnabled = fun enabled ->
-                isEnabled <- enabled
-                // Update and save settings
-                currentSettings <- { currentSettings with IsEnabled = enabled }
-                Settings.save currentSettings |> ignore
             OnSettings = fun () ->
                 // Launch web-based settings UI
                 try
@@ -218,11 +205,8 @@ let main argv =
                             newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
                             newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
 
-                        let enabledChanged = newSettings.IsEnabled <> currentSettings.IsEnabled
-
                         // Update current settings
                         currentSettings <- newSettings
-                        isEnabled <- newSettings.IsEnabled
 
                         // Apply changes
                         match trayState with
@@ -235,11 +219,6 @@ let main argv =
                                     Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
                                 else
                                     Logger.error "Failed to register new hotkey!"
-
-                            if enabledChanged then
-                                // Update tray icon state
-                                tray.IsEnabled <- newSettings.IsEnabled
-                                Logger.info (sprintf "Voice input %s" (if newSettings.IsEnabled then "enabled" else "disabled"))
                         | None -> ()
 
                     match webServerState with

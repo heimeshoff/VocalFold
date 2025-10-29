@@ -1,0 +1,23 @@
+{
+  "name": "vocalfold-workspace",
+  "version": "1.0.0",
+  "description": "VocalFold - Voice to Text Application with Web UI",
+  "private": true,
+  "scripts": {
+    "install:webui": "cd VocalFold.WebUI && npm install",
+    "clean:webui": "node scripts/clean-webui.js",
+    "fable:webui": "cd VocalFold.WebUI && dotnet fable --noCache",
+    "prepare:webui": "cd VocalFold.WebUI && cpx index.html dist && cpx \"src/**/*\" dist/src && cpx \"fable_modules/**/*\" dist/fable_modules",
+    "bundle:webui": "cd VocalFold.WebUI && npm run build",
+    "finalize:webui": "cd VocalFold.WebUI && cpx \"dist-build/**/*\" dist",
+    "build:webui": "npm run clean:webui && npm run fable:webui && npm run prepare:webui && npm run bundle:webui && npm run finalize:webui",
+    "build:backend": "cd VocalFold && dotnet build",
+    "rebuild": "npm run build:webui && npm run build:backend",
+    "deploy": "npm run rebuild && node scripts/deploy.js",
+    "run": "cd VocalFold && dotnet run"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.1",
+    "cpx2": "^7.0.1"
+  }
+}

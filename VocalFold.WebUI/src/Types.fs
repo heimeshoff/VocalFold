@@ -12,7 +12,6 @@ type KeywordReplacement = {
 type AppSettings = {
     HotkeyKey: uint32
     HotkeyModifiers: uint32
-    IsEnabled: bool
     ModelSize: string
     RecordingDuration: int
     TypingSpeed: string
@@ -20,7 +19,6 @@ type AppSettings = {
 }
 
 type AppStatus = {
-    IsEnabled: bool
     Version: string
     CurrentHotkey: string
 }
@@ -95,9 +93,6 @@ type Msg =
     | CancelEditKeyword
     | AddExampleKeywords
     | ExampleKeywordsAdded of Result<int, string>
-
-    // Enable/Disable
-    | ToggleEnabled
 
     // UI
     | ShowToast of string * ToastType

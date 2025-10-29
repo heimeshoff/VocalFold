@@ -5,21 +5,6 @@ open Types
 open Components.Card
 open Components.Button
 
-let private statusIndicator isEnabled =
-    let indicatorClass = sprintf "w-3 h-3 rounded-full %s" (if isEnabled then "bg-green-500 animate-pulse" else "bg-gray-500")
-    Html.div [
-        prop.className "flex items-center space-x-2"
-        prop.children [
-            Html.div [
-                prop.className indicatorClass
-            ]
-            Html.span [
-                prop.className "text-sm font-medium"
-                prop.text (if isEnabled then "Active" else "Inactive")
-            ]
-        ]
-    ]
-
 let private statusCard status dispatch =
     Html.div [
         prop.className "bg-gradient-to-br from-primary/20 to-secondary/20 rounded-lg shadow-lg p-6 border border-primary/30"
@@ -32,47 +17,28 @@ let private statusCard status dispatch =
                 prop.className "space-y-4"
                 prop.children [
                     Html.div [
-                        prop.className "flex items-center justify-between"
+                        prop.className "flex items-center justify-between mb-2"
                         prop.children [
-                            statusIndicator status.IsEnabled
-                            let buttonClass =
-                                sprintf "px-6 py-2 rounded-lg font-medium transition-all duration-200 %s"
-                                    (if status.IsEnabled then "bg-red-500 hover:bg-red-600 text-white" else "bg-green-500 hover:bg-green-600 text-white")
-                            Html.button [
-                                prop.className buttonClass
-                                prop.text (if status.IsEnabled then "Disable" else "Enable")
-                                prop.onClick (fun _ -> dispatch ToggleEnabled)
+                            Html.span [
+                                prop.className "text-text-secondary text-sm"
+                                prop.text "Global Hotkey"
+                            ]
+                            Html.span [
+                                prop.className "text-primary font-mono font-semibold"
+                                prop.text status.CurrentHotkey
                             ]
                         ]
                     ]
                     Html.div [
-                        prop.className "pt-4 border-t border-white/10"
+                        prop.className "flex items-center justify-between"
                         prop.children [
-                            Html.div [
-                                prop.className "flex items-center justify-between mb-2"
-                                prop.children [
-                                    Html.span [
-                                        prop.className "text-text-secondary text-sm"
-                                        prop.text "Global Hotkey"
-                                    ]
-                                    Html.span [
-                                        prop.className "text-primary font-mono font-semibold"
-                                        prop.text status.CurrentHotkey
-                                    ]
-                                ]
+                            Html.span [
+                                prop.className "text-text-secondary text-sm"
+                                prop.text "Version"
                             ]
-                            Html.div [
-                                prop.className "flex items-center justify-between"
-                                prop.children [
-                                    Html.span [
-                                        prop.className "text-text-secondary text-sm"
-                                        prop.text "Version"
-                                    ]
-                                    Html.span [
-                                        prop.className "text-text-primary font-semibold"
-                                        prop.text status.Version
-                                    ]
-                                ]
+                            Html.span [
+                                prop.className "text-text-primary font-semibold"
+                                prop.text status.Version
                             ]
                         ]
                     ]

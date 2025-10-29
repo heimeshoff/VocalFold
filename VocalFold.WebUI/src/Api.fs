@@ -26,7 +26,6 @@ let appSettingsDecoder: Decoder<AppSettings> =
     Decode.object (fun get -> {
         HotkeyKey = get.Required.Field "hotkeyKey" Decode.uint32
         HotkeyModifiers = get.Required.Field "hotkeyModifiers" Decode.uint32
-        IsEnabled = get.Required.Field "isEnabled" Decode.bool
         ModelSize = get.Required.Field "modelSize" Decode.string
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
         TypingSpeed = get.Required.Field "typingSpeedStr" Decode.string
@@ -37,7 +36,6 @@ let appSettingsEncoder (settings: AppSettings) =
     Encode.object [
         "hotkeyKey", Encode.uint32 settings.HotkeyKey
         "hotkeyModifiers", Encode.uint32 settings.HotkeyModifiers
-        "isEnabled", Encode.bool settings.IsEnabled
         "modelSize", Encode.string settings.ModelSize
         "recordingDuration", Encode.int settings.RecordingDuration
         "typingSpeedStr", Encode.string settings.TypingSpeed
@@ -46,7 +44,6 @@ let appSettingsEncoder (settings: AppSettings) =
 
 let appStatusDecoder: Decoder<AppStatus> =
     Decode.object (fun get -> {
-        IsEnabled = get.Required.Field "isEnabled" Decode.bool
         Version = get.Required.Field "version" Decode.string
         CurrentHotkey = get.Required.Field "currentHotkey" Decode.string
     })

@@ -13,16 +13,13 @@ extern bool SetForegroundWindow(IntPtr hWnd)
 /// Configuration for the tray icon
 type TrayConfig = {
     ApplicationName: string
-    InitialEnabled: bool
     OnExit: unit -> unit
-    OnToggleEnabled: bool -> unit
     OnSettings: unit -> unit
 }
 
 /// Tray icon state
 type TrayState = {
     Icon: NotifyIcon
-    mutable IsEnabled: bool
 }
 
 /// Load icon from logo.png file with larger visual size
@@ -66,62 +63,6 @@ let loadIconFromLogo () =
         g.FillRectangle(brush, 20, 48, 24, 8)
         Icon.FromHandle(bitmap.GetHicon())
 
-/// Create a grayed-out version for disabled state with larger visual size
-let createDisabledIcon () =
-    try
-        // Try to load logo.png and make it grayscale
-        let appPath = AppDomain.CurrentDomain.BaseDirectory
-        let logoPath = System.IO.Path.Combine(appPath, "logo.png")
-
-        if System.IO.File.Exists(logoPath) then
-            use originalBitmap = new Bitmap(logoPath)
-            // Use 64x64 for maximum visibility in tray
-            let resizedBitmap = new Bitmap(64, 64)
-            use g = Graphics.FromImage(resizedBitmap)
-            g.InterpolationMode <- System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic
-            g.SmoothingMode <- System.Drawing.Drawing2D.SmoothingMode.HighQuality
-            g.PixelOffsetMode <- System.Drawing.Drawing2D.PixelOffsetMode.HighQuality
-            g.CompositingQuality <- System.Drawing.Drawing2D.CompositingQuality.HighQuality
-
-            // Create grayscale color matrix
-            let colorMatrix = new System.Drawing.Imaging.ColorMatrix(
-                [| [| 0.3f; 0.3f; 0.3f; 0.0f; 0.0f |]
-                   [| 0.59f; 0.59f; 0.59f; 0.0f; 0.0f |]
-                   [| 0.11f; 0.11f; 0.11f; 0.0f; 0.0f |]
-                   [| 0.0f; 0.0f; 0.0f; 0.5f; 0.0f |]  // Reduced alpha for disabled look
-                   [| 0.0f; 0.0f; 0.0f; 0.0f; 1.0f |] |]
-            )
-
-            use attributes = new System.Drawing.Imaging.ImageAttributes()
-            attributes.SetColorMatrix(colorMatrix)
-
-            g.DrawImage(originalBitmap,
-                        new Rectangle(0, 0, 64, 64),
-                        0, 0, originalBitmap.Width, originalBitmap.Height,
-                        GraphicsUnit.Pixel, attributes)
-            Icon.FromHandle(resizedBitmap.GetHicon())
-        else
-            // Fallback
-            let bitmap = new Bitmap(64, 64)
-            use g = Graphics.FromImage(bitmap)
-            g.Clear(Color.Transparent)
-            use brush = new SolidBrush(Color.Gray)
-            g.FillEllipse(brush, 24, 12, 16, 24)
-            g.FillRectangle(brush, 28, 36, 8, 12)
-            g.FillRectangle(brush, 20, 48, 24, 8)
-            Icon.FromHandle(bitmap.GetHicon())
-    with
-    | ex ->
-        eprintfn "Error loading disabled logo: %s" ex.Message
-        // Fallback
-        let bitmap = new Bitmap(64, 64)
-        use g = Graphics.FromImage(bitmap)
-        g.Clear(Color.Transparent)
-        use brush = new SolidBrush(Color.Gray)
-        g.FillEllipse(brush, 24, 12, 16, 24)
-        g.FillRectangle(brush, 28, 36, 8, 12)
-        g.FillRectangle(brush, 20, 48, 24, 8)
-        Icon.FromHandle(bitmap.GetHicon())
 
 /// Registry operations for Windows startup
 module Startup =
@@ -173,19 +114,14 @@ let create (config: TrayConfig) : TrayState =
     let notifyIcon = new NotifyIcon()
 
     // Set up the icon
-    let enabledIcon = loadIconFromLogo()
-    let disabledIcon = createDisabledIcon()
+    let icon = loadIconFromLogo()
 
-    notifyIcon.Icon <- enabledIcon
+    notifyIcon.Icon <- icon
     notifyIcon.Visible <- true
     notifyIcon.Text <- config.ApplicationName
 
     // Create context menu
     let contextMenu = new ContextMenuStrip()
-
-    // Enabled/Disabled toggle menu item
-    let toggleText = if config.InitialEnabled then "Enabled ✓" else "Disabled"
-    let toggleItem = new ToolStripMenuItem(toggleText)
 
     // Settings menu item
     let settingsItem = new ToolStripMenuItem("Settings...")
@@ -195,34 +131,13 @@ let create (config: TrayConfig) : TrayState =
     startupItem.Checked <- Startup.isEnabled()
 
     // Separator
-    let separator1 = new ToolStripSeparator()
-    let separator2 = new ToolStripSeparator()
+    let separator = new ToolStripSeparator()
 
     // Exit menu item
     let exitItem = new ToolStripMenuItem("Exit")
 
     // Create state
-    let state = { Icon = notifyIcon; IsEnabled = config.InitialEnabled }
-
-    // Set initial icon based on enabled state
-    if config.InitialEnabled then
-        notifyIcon.Icon <- enabledIcon
-    else
-        notifyIcon.Icon <- disabledIcon
-
-    // Toggle handler
-    toggleItem.Click.Add(fun _ ->
-        state.IsEnabled <- not state.IsEnabled
-
-        if state.IsEnabled then
-            toggleItem.Text <- "Enabled ✓"
-            notifyIcon.Icon <- enabledIcon
-        else
-            toggleItem.Text <- "Disabled"
-            notifyIcon.Icon <- disabledIcon
-
-        config.OnToggleEnabled state.IsEnabled
-    )
+    let state = { Icon = notifyIcon }
 
     // Settings handler
     settingsItem.Click.Add(fun _ ->
@@ -253,11 +168,9 @@ let create (config: TrayConfig) : TrayState =
     )
 
     // Add items to menu
-    contextMenu.Items.Add(toggleItem) |> ignore
-    contextMenu.Items.Add(separator1) |> ignore
     contextMenu.Items.Add(settingsItem) |> ignore
     contextMenu.Items.Add(startupItem) |> ignore
-    contextMenu.Items.Add(separator2) |> ignore
+    contextMenu.Items.Add(separator) |> ignore
     contextMenu.Items.Add(exitItem) |> ignore
 
     // Handle right-click manually for proper positioning
@@ -273,11 +186,6 @@ let create (config: TrayConfig) : TrayState =
             // Show the menu at cursor position
             // This ensures the menu appears where the user clicked, with proper shadow alignment
             contextMenu.Show(cursorPosition)
-    )
-
-    // Double-click to toggle enabled state
-    notifyIcon.DoubleClick.Add(fun _ ->
-        toggleItem.PerformClick()
     )
 
     state

@@ -70,10 +70,6 @@ type AppSettings = {
     [<JsonPropertyName("hotkeyModifiers")>]
     HotkeyModifiers: uint32
 
-    /// Whether voice input is enabled
-    [<JsonPropertyName("isEnabled")>]
-    IsEnabled: bool
-
     /// Whisper model size (Tiny, Base, Small, Medium, Large)
     [<JsonPropertyName("modelSize")>]
     ModelSize: string
@@ -95,7 +91,6 @@ type AppSettings = {
 let defaultSettings = {
     HotkeyKey = 0x5Bu  // Left Win key
     HotkeyModifiers = 0x0002u ||| 0x0008u  // Ctrl + Win
-    IsEnabled = true
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed

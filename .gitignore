@@ -63,3 +63,4 @@ deploy
 .serena
 VocalFold.WebUI/dist
 VocalFold.WebUI/dist-build
+node_modules

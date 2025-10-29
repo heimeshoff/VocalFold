@@ -50,7 +50,6 @@ let getStatusHandler: HttpHandler =
         task {
             let settings = Settings.load()
             let status = {|
-                IsEnabled = settings.IsEnabled
                 Version = "1.0.0"
                 CurrentHotkey = Settings.getHotkeyDisplayName settings
             |}
