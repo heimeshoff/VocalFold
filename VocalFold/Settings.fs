@@ -93,8 +93,8 @@ type AppSettings = {
 
 /// Default settings
 let defaultSettings = {
-    HotkeyKey = 0x20u  // Space key
-    HotkeyModifiers = 0x0002u ||| 0x0004u  // Ctrl + Shift
+    HotkeyKey = 0x5Bu  // Left Win key
+    HotkeyModifiers = 0x0002u ||| 0x0008u  // Ctrl + Win
     IsEnabled = true
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
