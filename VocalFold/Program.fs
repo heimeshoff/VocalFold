@@ -121,9 +121,6 @@ let main argv =
                 | None ->
                     // Start web server
                     Logger.info "Starting web server..."
-                    match trayState with
-                    | Some tray -> TrayIcon.notifyInfo tray "Opening settings..."
-                    | None -> ()
 
                     let serverConfig: WebServer.ServerConfig = {
                         OnSettingsChanged = onSettingsChanged
