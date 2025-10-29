@@ -82,6 +82,10 @@ type AppSettings = {
     [<JsonPropertyName("typingSpeed")>]
     TypingSpeedStr: string
 
+    /// Whether to start application with Windows
+    [<JsonPropertyName("startWithWindows")>]
+    StartWithWindows: bool
+
     /// Keyword replacements list
     [<JsonPropertyName("keywordReplacements")>]
     KeywordReplacements: KeywordReplacement list
@@ -94,6 +98,7 @@ let defaultSettings = {
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed
+    StartWithWindows = false  // Don't start with Windows by default
     KeywordReplacements = []  // No keyword replacements by default
 }
 

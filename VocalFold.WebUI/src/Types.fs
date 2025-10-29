@@ -15,6 +15,7 @@ type AppSettings = {
     ModelSize: string
     RecordingDuration: int
     TypingSpeed: string
+    StartWithWindows: bool
     KeywordReplacements: KeywordReplacement list
 }
 

@@ -205,6 +205,9 @@ let main argv =
                             newSettings.HotkeyKey <> currentSettings.HotkeyKey ||
                             newSettings.HotkeyModifiers <> currentSettings.HotkeyModifiers
 
+                        let startupChanged =
+                            newSettings.StartWithWindows <> currentSettings.StartWithWindows
+
                         // Update current settings
                         currentSettings <- newSettings
 
@@ -219,6 +222,26 @@ let main argv =
                                     Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
                                 else
                                     Logger.error "Failed to register new hotkey!"
+
+                            if startupChanged then
+                                // Handle start with Windows setting change
+                                if newSettings.StartWithWindows then
+                                    let exePath = System.Reflection.Assembly.GetExecutingAssembly().Location
+                                    let exePath =
+                                        if exePath.EndsWith(".dll") then
+                                            // Running via dotnet, use the actual exe path
+                                            System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+                                        else
+                                            exePath
+                                    if TrayIcon.Startup.enable exePath then
+                                        Logger.info "Enabled start with Windows"
+                                    else
+                                        Logger.error "Failed to enable start with Windows"
+                                else
+                                    if TrayIcon.Startup.disable() then
+                                        Logger.info "Disabled start with Windows"
+                                    else
+                                        Logger.error "Failed to disable start with Windows"
                         | None -> ()
 
                     match webServerState with
@@ -255,6 +278,29 @@ let main argv =
 
         let tray = TrayIcon.create trayConfig
         trayState <- Some tray
+
+        // Sync StartWithWindows setting with actual registry state
+        let actualStartupEnabled = TrayIcon.Startup.isEnabled()
+        if currentSettings.StartWithWindows <> actualStartupEnabled then
+            Logger.info (sprintf "Syncing StartWithWindows setting with actual state: setting=%b, actual=%b" currentSettings.StartWithWindows actualStartupEnabled)
+            if currentSettings.StartWithWindows then
+                // Setting says it should be enabled but it's not - enable it
+                let exePath = System.Reflection.Assembly.GetExecutingAssembly().Location
+                let exePath =
+                    if exePath.EndsWith(".dll") then
+                        System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
+                    else
+                        exePath
+                if TrayIcon.Startup.enable exePath then
+                    Logger.info "Enabled start with Windows"
+                else
+                    Logger.error "Failed to enable start with Windows"
+            else
+                // Setting says it should be disabled but it's enabled - disable it
+                if TrayIcon.Startup.disable() then
+                    Logger.info "Disabled start with Windows"
+                else
+                    Logger.error "Failed to disable start with Windows"
 
         // Install keyboard hook with configured hotkey
         Logger.info (sprintf "Installing keyboard hook for: %s" (Settings.getHotkeyDisplayName currentSettings))

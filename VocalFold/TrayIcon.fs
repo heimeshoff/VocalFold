@@ -126,10 +126,6 @@ let create (config: TrayConfig) : TrayState =
     // Settings menu item
     let settingsItem = new ToolStripMenuItem("Settings...")
 
-    // Start with Windows menu item
-    let startupItem = new ToolStripMenuItem("Start with Windows")
-    startupItem.Checked <- Startup.isEnabled()
-
     // Separator
     let separator = new ToolStripSeparator()
 
@@ -144,24 +140,6 @@ let create (config: TrayConfig) : TrayState =
         config.OnSettings()
     )
 
-    // Startup handler
-    startupItem.Click.Add(fun _ ->
-        let exePath = System.Reflection.Assembly.GetExecutingAssembly().Location
-        let exePath =
-            if exePath.EndsWith(".dll") then
-                // Running via dotnet, use the actual exe path
-                System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName
-            else
-                exePath
-
-        if startupItem.Checked then
-            if Startup.disable() then
-                startupItem.Checked <- false
-        else
-            if Startup.enable exePath then
-                startupItem.Checked <- true
-    )
-
     // Exit handler
     exitItem.Click.Add(fun _ ->
         config.OnExit()
@@ -169,7 +147,6 @@ let create (config: TrayConfig) : TrayState =
 
     // Add items to menu
     contextMenu.Items.Add(settingsItem) |> ignore
-    contextMenu.Items.Add(startupItem) |> ignore
     contextMenu.Items.Add(separator) |> ignore
     contextMenu.Items.Add(exitItem) |> ignore
 

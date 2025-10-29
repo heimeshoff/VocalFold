@@ -29,6 +29,7 @@ let appSettingsDecoder: Decoder<AppSettings> =
         ModelSize = get.Required.Field "modelSize" Decode.string
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
         TypingSpeed = get.Required.Field "typingSpeedStr" Decode.string
+        StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
         KeywordReplacements = get.Required.Field "keywordReplacements" (Decode.list keywordReplacementDecoder)
     })
 
@@ -39,6 +40,7 @@ let appSettingsEncoder (settings: AppSettings) =
         "modelSize", Encode.string settings.ModelSize
         "recordingDuration", Encode.int settings.RecordingDuration
         "typingSpeedStr", Encode.string settings.TypingSpeed
+        "startWithWindows", Encode.bool settings.StartWithWindows
         "keywordReplacements", Encode.list (List.map keywordReplacementEncoder settings.KeywordReplacements)
     ]
 

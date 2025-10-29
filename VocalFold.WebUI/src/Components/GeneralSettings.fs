@@ -264,6 +264,47 @@ let private modelSelector (currentModel: string) (dispatch: Msg -> unit) (settin
     }
 
 // ============================================================================
+// Start with Windows Toggle Component
+// ============================================================================
+
+let private startWithWindowsToggle (isEnabled: bool) (dispatch: Msg -> unit) (settings: AppSettings) =
+    card {
+        Title = "Startup"
+        ClassName = None
+        Children = [
+            Html.div [
+                prop.className "space-y-3"
+                prop.children [
+                    Html.label [
+                        prop.className "flex items-start space-x-3 p-3 rounded border border-text-secondary/30 hover:border-primary/50 cursor-pointer transition-colors"
+                        prop.children [
+                            Html.input [
+                                prop.type'.checkbox
+                                prop.isChecked isEnabled
+                                prop.onChange (fun (checked: bool) ->
+                                    let updatedSettings = { settings with StartWithWindows = checked }
+                                    dispatch (UpdateSettings updatedSettings)
+                                )
+                                prop.className "mt-1"
+                            ]
+                            Html.div [
+                                Html.p [
+                                    prop.className "font-medium text-text-primary"
+                                    prop.text "Start with Windows"
+                                ]
+                                Html.p [
+                                    prop.className "text-sm text-text-secondary"
+                                    prop.text "Automatically launch VocalFold when Windows starts"
+                                ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    }
+
+// ============================================================================
 // Typing Speed Selector Component
 // ============================================================================
 
@@ -342,6 +383,8 @@ let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (pendin
                                 typingSpeedSelector s.TypingSpeed dispatch s
                             ]
                         ]
+
+                        startWithWindowsToggle s.StartWithWindows dispatch s
                     ]
                 ]
             | LoadingState.Loading ->
