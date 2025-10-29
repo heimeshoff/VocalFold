@@ -94,7 +94,7 @@ type AppSettings = {
 /// Default settings
 let defaultSettings = {
     HotkeyKey = 0x5Bu  // Left Win key
-    HotkeyModifiers = 0x0002u ||| 0x0008u  // Ctrl + Win
+    HotkeyModifiers = 0x0002u  // Ctrl (modifier)
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed
@@ -161,6 +161,14 @@ let load () : AppSettings =
     | ex ->
         Logger.error (sprintf "Error loading settings: %s - Using default settings" ex.Message)
         defaultSettings
+
+/// Load settings from file and return whether this is the first run
+/// Returns (settings, isFirstRun) where isFirstRun is true if settings file didn't exist
+let loadWithFirstRunCheck () : AppSettings * bool =
+    let settingsPath = getSettingsFilePath()
+    let isFirstRun = not (File.Exists(settingsPath))
+    let settings = load()
+    (settings, isFirstRun)
 
 /// Save settings to file
 let save (settings: AppSettings) : bool =

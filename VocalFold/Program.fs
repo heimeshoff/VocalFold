@@ -41,11 +41,13 @@ let main argv =
             TranscriptionService.createService GgmlType.Base
             |> Async.RunSynchronously
 
-        // Load settings
-        let mutable currentSettings = Settings.load()
+        // Load settings and check if this is the first run
+        let mutable currentSettings, isFirstRun = Settings.loadWithFirstRunCheck()
         Logger.info "Loaded settings:"
         Logger.info (sprintf "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings))
         Logger.info (sprintf "   Model: %s" currentSettings.ModelSize)
+        if isFirstRun then
+            Logger.info "First run detected - will open settings after initialization"
 
         // Mutable state
         let mutable currentRecording: AudioRecorder.RecordingState option = None
@@ -324,6 +326,12 @@ let main argv =
         if hookInstalled then
             Logger.info "Keyboard hook installed successfully"
             Logger.info "Application started successfully!"
+
+            // Open settings on first run
+            if isFirstRun then
+                Logger.info "Opening settings page for first-time setup..."
+                openSettingsDialog()
+
             Logger.info "Entering message loop..."
             try
                 // Start the message loop
