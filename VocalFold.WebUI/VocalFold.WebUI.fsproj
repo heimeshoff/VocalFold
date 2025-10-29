@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="src/Types.fs" />
+    <Compile Include="src/Api.fs" />
+    <Compile Include="src/Components/Card.fs" />
+    <Compile Include="src/Components/Button.fs" />
+    <Compile Include="src/Components/Dashboard.fs" />
+    <Compile Include="src/Components/GeneralSettings.fs" />
+    <Compile Include="src/Components/KeywordManager.fs" />
+    <Compile Include="src/App.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Fable.Core" Version="4.3.0" />
+    <PackageReference Include="Feliz" Version="2.7.0" />
+    <PackageReference Include="Feliz.UseElmish" Version="2.4.0" />
+    <PackageReference Include="Thoth.Json" Version="10.4.1" />
+    <PackageReference Include="Thoth.Fetch" Version="3.0.1" />
+    <PackageReference Include="Fable.Promise" Version="3.2.0" />
+    <PackageReference Include="Fable.SimpleHttp" Version="3.6.0" />
+  </ItemGroup>
+
+</Project>

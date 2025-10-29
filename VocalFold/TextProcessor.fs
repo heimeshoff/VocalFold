@@ -3,6 +3,11 @@ module TextProcessor
 open System
 open System.Text.RegularExpressions
 
+/// Result of processing transcribed text
+type ProcessingResult =
+    | TypeText of string        // Text should be typed
+    | OpenSettings             // Open settings dialog
+
 /// Process transcribed text and apply keyword replacements
 /// Returns the processed text with all applicable keyword replacements applied
 let processTranscription (text: string) (replacements: Settings.KeywordReplacement list) : string =
@@ -96,3 +101,25 @@ let getExampleReplacements () : Settings.KeywordReplacement list =
             Replacement = "let main argv =\n    printfn \"Hello, World!\"\n    0"
         }
     ]
+
+/// Process transcription and check for special commands
+/// This is the main entry point that should be used instead of processTranscription directly
+let processTranscriptionWithCommands (text: string) (replacements: Settings.KeywordReplacement list) : ProcessingResult =
+    try
+        // Check for special built-in commands (case-insensitive)
+        let normalizedText = text.Trim().ToLowerInvariant()
+
+        // Check for "open vocalfold settings" command
+        if normalizedText.Contains("open vocalfold settings") ||
+           normalizedText.Contains("open vocal fold settings") then
+            Logger.info "Detected 'open vocalfold settings' command"
+            OpenSettings
+        else
+            // No special command detected, process normally
+            let processedText = processTranscription text replacements
+            TypeText processedText
+    with
+    | ex ->
+        Logger.logException ex "Error in processTranscriptionWithCommands"
+        // On error, return the original text
+        TypeText text

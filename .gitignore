@@ -57,3 +57,10 @@ TestResult.xml
 nunit-*.xml
 .idea
 .claude/settings.local.json
+VocalFold.WebUI/node_modules
+deploy
+*.fs.js
+.serena
+VocalFold.WebUI/dist
+VocalFold.WebUI/dist-build
+node_modules

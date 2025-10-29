@@ -70,10 +70,6 @@ type AppSettings = {
     [<JsonPropertyName("hotkeyModifiers")>]
     HotkeyModifiers: uint32
 
-    /// Whether voice input is enabled
-    [<JsonPropertyName("isEnabled")>]
-    IsEnabled: bool
-
     /// Whisper model size (Tiny, Base, Small, Medium, Large)
     [<JsonPropertyName("modelSize")>]
     ModelSize: string
@@ -86,6 +82,10 @@ type AppSettings = {
     [<JsonPropertyName("typingSpeed")>]
     TypingSpeedStr: string
 
+    /// Whether to start application with Windows
+    [<JsonPropertyName("startWithWindows")>]
+    StartWithWindows: bool
+
     /// Keyword replacements list
     [<JsonPropertyName("keywordReplacements")>]
     KeywordReplacements: KeywordReplacement list
@@ -93,12 +93,12 @@ type AppSettings = {
 
 /// Default settings
 let defaultSettings = {
-    HotkeyKey = 0x20u  // Space key
-    HotkeyModifiers = 0x0002u ||| 0x0004u  // Ctrl + Shift
-    IsEnabled = true
+    HotkeyKey = 0x5Bu  // Left Win key
+    HotkeyModifiers = 0x0002u ||| 0x0008u  // Ctrl + Win
     ModelSize = "Base"
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed
+    StartWithWindows = false  // Don't start with Windows by default
     KeywordReplacements = []  // No keyword replacements by default
 }
 
