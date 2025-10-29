@@ -239,6 +239,11 @@ let main argv =
                                             Logger.info "Settings command completed successfully"
 
                                         | TextProcessor.TypeText processedText ->
+                                            // Store this transcription for "repeat last message" command
+                                            // (only if it's not the "repeat last message" command itself)
+                                            if not (transcription.ToLowerInvariant().Contains("repeat last message")) then
+                                                TextProcessor.storeLastTranscription processedText
+
                                             // Hide overlay BEFORE typing so input goes to the correct window
                                             Logger.debug "Hiding overlay before typing"
                                             overlayManager.Hide()

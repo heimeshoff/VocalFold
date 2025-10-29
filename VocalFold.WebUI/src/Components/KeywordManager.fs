@@ -197,6 +197,29 @@ let private commandsSection () =
                                     ]
                                 ]
                             ]
+                            Html.tr [
+                                prop.className "border-t border-white/10"
+                                prop.children [
+                                    Html.td [
+                                        prop.className "px-6 py-4"
+                                        prop.children [
+                                            Html.span [
+                                                prop.className "font-mono text-primary font-medium"
+                                                prop.text "repeat last message"
+                                            ]
+                                        ]
+                                    ]
+                                    Html.td [
+                                        prop.className "px-6 py-4"
+                                        prop.children [
+                                            Html.span [
+                                                prop.className "text-text-secondary text-sm"
+                                                prop.text "Types the last transcribed message again. Useful for repeating text without re-recording."
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
                         ]
                     ]
                 ]

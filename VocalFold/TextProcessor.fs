@@ -8,6 +8,19 @@ type ProcessingResult =
     | TypeText of string        // Text should be typed
     | OpenSettings             // Open settings dialog
 
+/// Mutable storage for the last transcribed message
+let mutable private lastTranscription: string option = None
+
+/// Store the last transcription for "repeat last message" command
+let storeLastTranscription (text: string) : unit =
+    if not (String.IsNullOrWhiteSpace(text)) then
+        lastTranscription <- Some text
+        Logger.debug (sprintf "Stored last transcription: \"%s\""
+            (if text.Length > 50 then text.Substring(0, 47) + "..." else text))
+
+/// Get the last stored transcription (for debugging/testing)
+let getLastTranscription () : string option = lastTranscription
+
 /// Process transcribed text and apply keyword replacements
 /// Returns the processed text with all applicable keyword replacements applied
 let processTranscription (text: string) (replacements: Settings.KeywordReplacement list) : string =
@@ -114,6 +127,23 @@ let processTranscriptionWithCommands (text: string) (replacements: Settings.Keyw
            normalizedText.Contains("open vocal fold settings") then
             Logger.info "Detected 'open vocalfold settings' command"
             OpenSettings
+        // Check for "repeat last message" command
+        elif normalizedText.Contains("repeat last message") then
+            Logger.info "Detected 'repeat last message' command"
+            match lastTranscription with
+            | Some lastText ->
+                Logger.info (sprintf "Repeating last transcription: \"%s\""
+                    (if lastText.Length > 50 then lastText.Substring(0, 47) + "..." else lastText))
+                // Replace "repeat last message" with the actual last transcription
+                let pattern = @"\brepeat last message\b"
+                let regex = new Regex(pattern, RegexOptions.IgnoreCase)
+                let resultText = regex.Replace(text, lastText)
+                // Process the result text with keyword replacements
+                let processedText = processTranscription resultText replacements
+                TypeText processedText
+            | None ->
+                Logger.warning "No previous transcription available to repeat"
+                TypeText text  // Just type the original text if no previous transcription
         else
             // No special command detected, process normally
             let processedText = processTranscription text replacements
