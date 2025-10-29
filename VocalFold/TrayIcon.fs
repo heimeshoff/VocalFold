@@ -160,9 +160,9 @@ let create (config: TrayConfig) : TrayState =
             // Get cursor position
             let cursorPosition = Cursor.Position
 
-            // Show the menu at cursor position
-            // This ensures the menu appears where the user clicked, with proper shadow alignment
-            contextMenu.Show(cursorPosition)
+            // Show the menu above and to the left of the tray icon
+            // This ensures consistent positioning regardless of how many times the menu is opened
+            contextMenu.Show(cursorPosition, ToolStripDropDownDirection.AboveLeft)
     )
 
     state
