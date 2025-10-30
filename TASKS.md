@@ -1762,6 +1762,760 @@ Final optimizations and code cleanup:
 
 ---
 
+---
+
+### Phase 13: Keyword Categorization ⬜
+
+**Context**: As users accumulate many keywords (punctuation, email signatures, code snippets, etc.), managing them becomes difficult. This phase adds visual categorization to organize keywords into collapsible groups. This is purely a UI enhancement - categories have NO effect on keyword matching or replacement during transcription.
+
+**Goals**:
+- Organize keywords into user-defined categories
+- Collapsible/expandable category sections (like Notion toggles)
+- Better overview of large keyword collections
+- Visual organization without affecting functionality
+- Drag-and-drop keywords between categories
+
+**Architecture**:
+```
+Backend: Add "Category" field to KeywordReplacement
+Frontend: Group keywords by category with accordion UI
+Display: Category name → [collapse/expand] → Keywords list
+No Changes: TextProcessor logic remains unchanged
+```
+
+---
+
+**Task 13.1: Backend - Category Data Structure**
+
+Extend keyword data model to support categories:
+
+**Changes to Types.fs** (shared types):
+```fsharp
+type KeywordReplacement = {
+    Keyword: string
+    Replacement: string
+    Category: string option    // NEW: Optional category name
+    CaseSensitive: bool
+    WholePhrase: bool
+}
+
+type KeywordCategory = {
+    Name: string              // Category name (e.g., "Punctuation", "Email")
+    IsExpanded: bool          // UI state: collapsed or expanded
+    Color: string option      // Optional color tag
+}
+
+type AppSettings = {
+    // ... existing fields ...
+    KeywordReplacements: KeywordReplacement list
+    Categories: KeywordCategory list    // NEW: List of categories
+}
+```
+
+**Implementation**:
+1. Update KeywordReplacement type in Settings.fs
+2. Add Categories list to AppSettings
+3. Add default categories on first run:
+   - "Uncategorized" (default for keywords without category)
+   - "Punctuation"
+   - "Email Templates"
+   - "Code Snippets"
+4. Implement migration logic for existing keywords (set Category = None)
+5. Ensure JSON serialization/deserialization works
+
+**Acceptance**:
+- Settings structure supports categories
+- Existing keywords load correctly (backward compatible)
+- Default categories created on first run
+- Category state persists to settings.json
+
+---
+
+**Task 13.2: Backend - Category Management API**
+
+Add REST API endpoints for category operations:
+
+**New Endpoints**:
+```fsharp
+GET    /api/categories              -> Returns all categories
+POST   /api/categories              -> Creates new category
+PUT    /api/categories/:name        -> Updates category (rename, color)
+DELETE /api/categories/:name        -> Deletes category (moves keywords to Uncategorized)
+PUT    /api/categories/:name/state  -> Toggle expanded/collapsed state
+
+// Update existing keyword endpoints to support category
+PUT    /api/keywords/:index/category  -> Move keyword to different category
+```
+
+**Implementation**:
+1. Create CategoryApi.fs module
+2. Implement category CRUD operations
+3. Add validation (no duplicate category names)
+4. Handle cascade deletion (when category deleted, keywords move to "Uncategorized")
+5. Ensure "Uncategorized" category cannot be deleted
+6. Thread-safe operations
+7. Persist category state (expanded/collapsed) to settings
+
+**Acceptance**:
+- Can create, read, update, delete categories via API
+- Keywords move to "Uncategorized" when their category is deleted
+- Expanded/collapsed state persists
+- Proper error responses for invalid operations
+
+---
+
+**Task 13.3: Frontend - Category Accordion UI Component**
+
+Create collapsible category sections for the keyword manager:
+
+**Design** (accordion-style):
+```
+Keyword Replacements
+
+[Add Keyword]  [Add Category]  [Import]  [Export]
+
+┌─────────────────────────────────────────────────────┐
+│ ▼ Punctuation                               [Edit] [Delete] │
+├─────────────────────────────────────────────────────┤
+│   comma         → ,                        [Edit] [Delete]  │
+│   period        → .                        [Edit] [Delete]  │
+│   question mark → ?                        [Edit] [Delete]  │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ ▶ Email Templates (3 keywords)             [Edit] [Delete] │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ ▼ Code Snippets                             [Edit] [Delete] │
+├─────────────────────────────────────────────────────┤
+│   console log   → console.log("$1")        [Edit] [Delete]  │
+│   arrow function → const $1 = () => {}     [Edit] [Delete]  │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ ▼ Uncategorized (2 keywords)               [Edit] [Delete] │
+├─────────────────────────────────────────────────────┤
+│   test keyword  → replacement text         [Edit] [Delete]  │
+└─────────────────────────────────────────────────────┘
+```
+
+**Components**:
+
+1. **CategoryAccordion**:
+   - Header shows category name + keyword count
+   - Collapse/expand toggle (▶/▼ icon)
+   - Smooth animation on toggle (slide down/up)
+   - Edit/Delete buttons on hover
+   - Color tag (optional visual indicator)
+   - Empty state: "No keywords in this category"
+
+2. **CategoryHeader**:
+   - Category name (large, bold)
+   - Keyword count badge
+   - Expand/collapse icon (animated rotation)
+   - Action buttons (edit name, delete category)
+   - Color dot indicator (if color defined)
+
+3. **KeywordList** (within category):
+   - Same table structure as before
+   - Grouped by parent category
+   - Row actions (edit, delete, move to category)
+
+**State Management**:
+```fsharp
+type Model = {
+    // ... existing fields ...
+    Categories: KeywordCategory list
+    ExpandedCategories: Set<string>    // Set of expanded category names
+}
+
+type Msg =
+    // ... existing messages ...
+    | ToggleCategory of string         // Expand/collapse
+    | CreateCategory of string
+    | RenameCategory of string * string
+    | DeleteCategory of string
+    | MoveKeywordToCategory of int * string
+```
+
+**Styling**:
+- Tailwind accordion classes
+- Smooth transitions (duration-300)
+- Hover states on category headers
+- Border colors matching category color
+- Indented keyword rows within categories
+
+**Acceptance**:
+- Categories render as collapsible sections
+- Clicking header toggles expand/collapse
+- Keywords grouped correctly under categories
+- Smooth animations
+- Empty categories show helpful message
+- "Uncategorized" always shown (cannot be deleted)
+
+---
+
+**Task 13.4: Frontend - Category Management Modal**
+
+Create UI for creating and editing categories:
+
+**Add Category Modal**:
+```
+┌─────────────────────────────────────────┐
+│  Add Category                     [×]   │
+├─────────────────────────────────────────┤
+│                                         │
+│  Category Name:                         │
+│  [_____________________________]        │
+│                                         │
+│  Color (optional):                      │
+│  [🔵] [🟢] [🟡] [🟠] [🔴] [🟣]         │
+│                                         │
+│  Examples:                              │
+│  • Punctuation                          │
+│  • Email Templates                      │
+│  • Code Snippets                        │
+│  • Greetings                            │
+│  • Commands                             │
+│                                         │
+│         [Cancel]  [Create]              │
+└─────────────────────────────────────────┘
+```
+
+**Edit Category Modal**:
+```
+┌─────────────────────────────────────────┐
+│  Edit Category                    [×]   │
+├─────────────────────────────────────────┤
+│                                         │
+│  Category Name:                         │
+│  [Punctuation____________]              │
+│                                         │
+│  Color:                                 │
+│  [🔵] [🟢] [🟡] [🟠] [🔴] [🟣]         │
+│                                         │
+│  Keywords in this category: 5           │
+│                                         │
+│         [Cancel]  [Save]                │
+└─────────────────────────────────────────┘
+```
+
+**Implementation**:
+1. CategoryModal component
+2. Form validation (no empty names, no duplicates)
+3. Color picker (predefined palette)
+4. Create/Edit modes
+5. API calls on save
+6. Update local state on success
+
+**Acceptance**:
+- Can create new categories
+- Can rename existing categories
+- Can choose color tags
+- Validation prevents duplicate names
+- Modal closes on success
+- UI updates immediately
+
+---
+
+**Task 13.5: Frontend - Keyword Category Assignment**
+
+Update keyword add/edit modal to include category selection:
+
+**Updated Keyword Modal**:
+```
+┌─────────────────────────────────────────┐
+│  Add Keyword                      [×]   │
+├─────────────────────────────────────────┤
+│                                         │
+│  Keyword (what you say):                │
+│  [_____________________________]        │
+│                                         │
+│  Replacement (what to type):            │
+│  [_____________________________]        │
+│  [_____________________________]        │
+│                                         │
+│  Category:                              │
+│  [ Punctuation ▼               ]        │
+│                                         │
+│  ☑ Case Sensitive                      │
+│  ☑ Whole Phrase Only                   │
+│                                         │
+│         [Cancel]  [Save]                │
+└─────────────────────────────────────────┘
+```
+
+**Implementation**:
+1. Add category dropdown to KeywordModal
+2. Populate dropdown with available categories
+3. Show "(Create New...)" option at bottom
+4. Default to "Uncategorized" for new keywords
+5. Save category when creating/editing keyword
+6. Quick-create category without closing modal
+
+**Acceptance**:
+- Category dropdown shows all categories
+- Can select category when adding keyword
+- Can change category when editing keyword
+- Can create new category inline
+- Changes persist via API
+
+---
+
+**Task 13.6: Frontend - Drag-and-Drop Between Categories**
+
+Add drag-and-drop functionality to move keywords between categories:
+
+**User Experience**:
+```
+User drags "comma" from Punctuation category
+  → Hovers over "Code Snippets" category header
+  → Category highlights
+  → User drops
+  → "comma" moves to Code Snippets
+  → Toast: "Moved 'comma' to Code Snippets"
+```
+
+**Implementation**:
+1. Use HTML5 Drag and Drop API
+2. Make keyword rows draggable (`draggable="true"`)
+3. Make category headers drop targets
+4. Visual feedback during drag:
+   - Dragged item shows ghost image
+   - Drop targets highlight on hover
+   - Cursor changes to move cursor
+5. On drop:
+   - Call API to update keyword category
+   - Update local state
+   - Show toast confirmation
+6. Handle edge cases:
+   - Dropping on same category (no-op)
+   - Dropping on invalid target (cancel)
+
+**Styling**:
+- Dragging: Opacity 50%, cursor: grabbing
+- Valid drop target: Border glow, background highlight
+- Invalid drop target: Red border, cursor: not-allowed
+
+**Acceptance**:
+- Can drag keywords between categories
+- Visual feedback clear during drag
+- Drop updates category immediately
+- Toast confirms action
+- Works smoothly without bugs
+
+---
+
+**Task 13.7: Frontend - Category Operations & Bulk Actions**
+
+Add advanced category operations:
+
+**Features**:
+
+1. **Delete Category with Confirmation**:
+   ```
+   ⚠️ Delete "Email Templates"?
+
+   This category contains 5 keywords.
+   They will be moved to "Uncategorized".
+
+   [Cancel]  [Delete Category]
+   ```
+
+2. **Merge Categories**:
+   ```
+   Select category to merge with "Email Templates":
+   [ Code Snippets ▼ ]
+
+   All keywords from "Email Templates" will move to the selected category.
+   "Email Templates" will be deleted.
+
+   [Cancel]  [Merge]
+   ```
+
+3. **Bulk Move Keywords**:
+   - Select multiple keywords (checkboxes)
+   - Dropdown: "Move selected to category..."
+   - Button: "Move X keywords"
+
+4. **Sort Categories**:
+   - Drag-and-drop to reorder categories
+   - Sort alphabetically button
+   - Sort by keyword count button
+
+**Implementation**:
+1. DeleteCategoryConfirmation modal
+2. MergeCategoriesModal component
+3. Checkbox selection state in Model
+4. Bulk action toolbar (shows when items selected)
+5. Category reordering with drag-and-drop
+6. Sort functions (alpha, by count)
+
+**Acceptance**:
+- Can delete categories safely (keywords preserved)
+- Can merge categories
+- Can bulk move keywords
+- Can reorder categories
+- All operations confirm before executing
+- Toasts confirm successful actions
+
+---
+
+**Task 13.8: Frontend - Search & Filter with Categories**
+
+Enhance search to work across categories:
+
+**Search Features**:
+1. **Global Search**:
+   - Search box searches all keywords across categories
+   - Matching keywords highlight
+   - Non-matching categories collapse
+   - Matching categories auto-expand
+   - Show "X results in Y categories"
+
+2. **Filter by Category**:
+   - Multi-select dropdown: Filter by categories
+   - Show only selected categories
+   - "All Categories" to reset
+
+3. **Empty State**:
+   ```
+   No keywords found matching "test"
+
+   Try:
+   • Checking your spelling
+   • Using different keywords
+   • Clearing filters
+
+   [Clear Search]
+   ```
+
+**Implementation**:
+1. Global search across all keywords
+2. Filter categories based on search
+3. Auto-expand categories with matches
+4. Highlight matching text
+5. Show result count
+6. Clear search button
+
+**Acceptance**:
+- Search finds keywords across all categories
+- Results highlight correctly
+- Categories expand/collapse based on results
+- Filter by category works
+- Empty state helpful and actionable
+
+---
+
+**Task 13.9: Frontend - Category Visualization & Statistics**
+
+Add visual overview of categories:
+
+**Category Statistics Panel** (on Dashboard):
+```
+┌─────────────────────────────────────────┐
+│  Keyword Organization                   │
+│                                         │
+│  📊 Total Keywords: 45                  │
+│  📁 Categories: 6                       │
+│                                         │
+│  Top Categories:                        │
+│  • Punctuation: 12 keywords             │
+│  • Email Templates: 8 keywords          │
+│  • Code Snippets: 7 keywords            │
+│  • Uncategorized: 3 keywords            │
+│                                         │
+│  [Manage Categories]                    │
+└─────────────────────────────────────────┘
+```
+
+**Visual Category Overview** (in Keyword Manager):
+```
+Category Overview:  [Grid] [List]
+
+[Grid View]
+┌──────────┐ ┌──────────┐ ┌──────────┐
+│ 📝       │ │ 📧       │ │ 💻       │
+│ Punctua  │ │ Email    │ │ Code     │
+│ 12 kw    │ │ 8 kw     │ │ 7 kw     │
+└──────────┘ └──────────┘ └──────────┘
+```
+
+**Implementation**:
+1. Calculate category statistics
+2. CategoryStatsCard component (Dashboard)
+3. Grid view for quick category overview
+4. Chart/graph for visual representation (optional)
+5. Quick links to manage categories
+
+**Acceptance**:
+- Dashboard shows keyword statistics
+- Category counts accurate
+- Visual overview helpful
+- Quick navigation to categories
+
+---
+
+**Task 13.10: Backend - Category Persistence & Performance**
+
+Optimize category operations for performance:
+
+**Optimizations**:
+1. **Caching**:
+   - Cache category list in memory
+   - Invalidate cache on category changes
+   - Reduce file I/O
+
+2. **Efficient Grouping**:
+   - Index keywords by category
+   - Fast lookup by category name
+   - Efficient iteration
+
+3. **Batch Operations**:
+   - Bulk move keywords in single API call
+   - Batch category updates
+   - Reduce round trips
+
+**API Enhancements**:
+```fsharp
+POST /api/keywords/bulk-move
+Body: {
+  keywordIndices: [0, 2, 5, 8],
+  targetCategory: "Email Templates"
+}
+
+POST /api/categories/bulk
+Body: {
+  operations: [
+    { type: "create", name: "New Category" },
+    { type: "delete", name: "Old Category" },
+    { type: "rename", oldName: "A", newName: "B" }
+  ]
+}
+```
+
+**Implementation**:
+1. In-memory category cache
+2. Index keywords by category
+3. Batch API endpoints
+4. Optimize JSON serialization
+5. Add performance metrics logging
+
+**Acceptance**:
+- Category operations fast (<100ms)
+- Large keyword lists (100+) handle smoothly
+- Batch operations reduce API calls
+- No performance degradation
+
+---
+
+**Task 13.11: Testing & Edge Cases**
+
+Comprehensive testing of categorization feature:
+
+**Test Scenarios**:
+
+1. **Basic Operations**:
+   - Create category
+   - Rename category
+   - Delete category
+   - Move keyword to category
+   - Expand/collapse categories
+
+2. **Edge Cases**:
+   - Delete category with many keywords (100+)
+   - Rename category to existing name (validation)
+   - Delete "Uncategorized" (should fail)
+   - Move keyword to non-existent category
+   - Category with very long name (>100 chars)
+   - Keywords with no category (default to Uncategorized)
+   - Empty categories (show empty state)
+
+3. **Migration**:
+   - Load settings from before Phase 13 (no categories)
+   - All keywords default to "Uncategorized"
+   - Categories list created with defaults
+
+4. **Performance**:
+   - 10 categories with 50 keywords each
+   - Search across 500+ keywords
+   - Expand/collapse all categories rapidly
+   - Drag-and-drop with large lists
+
+5. **UI/UX**:
+   - Animations smooth (60fps)
+   - No visual glitches during expand/collapse
+   - Drag-and-drop visual feedback clear
+   - Toast notifications don't stack excessively
+   - Modal focus management correct
+
+**Acceptance**:
+- All test scenarios pass
+- No crashes or errors
+- Performance acceptable
+- Smooth user experience
+- Edge cases handled gracefully
+
+---
+
+**Task 13.12: Documentation & User Guide**
+
+Document the categorization feature:
+
+**Update USER_GUIDE.md**:
+```markdown
+### Organizing Keywords with Categories
+
+VocalFold allows you to organize your keywords into categories for better management.
+
+#### Creating Categories
+
+1. Open Settings → Keywords
+2. Click "Add Category"
+3. Enter a category name (e.g., "Email Templates")
+4. Choose a color (optional)
+5. Click "Create"
+
+#### Assigning Keywords to Categories
+
+**Method 1: When Adding/Editing Keywords**
+1. Add or edit a keyword
+2. Select category from dropdown
+3. Save
+
+**Method 2: Drag and Drop**
+1. Click and hold on a keyword
+2. Drag to the category header
+3. Release to move
+
+**Method 3: Bulk Move**
+1. Select multiple keywords (checkboxes)
+2. Choose "Move to category..."
+3. Confirm
+
+#### Managing Categories
+
+- **Rename**: Click "Edit" on category header
+- **Delete**: Click "Delete" (keywords move to Uncategorized)
+- **Reorder**: Drag category headers to reorder
+
+#### Tips
+
+- Use categories to group related keywords (e.g., Punctuation, Email, Code)
+- Collapse unused categories to reduce clutter
+- Search works across all categories
+- Categories are visual only - they don't affect keyword matching
+```
+
+**Update ARCHITECTURE.md**:
+```markdown
+### Keyword Categorization (Phase 13)
+
+**Purpose**: Visual organization of keywords into collapsible groups
+
+**Data Model**:
+- KeywordReplacement gains optional Category field
+- AppSettings includes Categories list
+- Category state (expanded/collapsed) persists
+
+**UI Components**:
+- CategoryAccordion: Collapsible category sections
+- CategoryModal: Create/edit categories
+- Drag-and-drop support for moving keywords
+
+**API Endpoints**:
+- GET/POST/PUT/DELETE /api/categories
+- PUT /api/keywords/:index/category
+
+**Important**: Categories are UI-only. TextProcessor ignores categories during matching.
+```
+
+**Acceptance**:
+- Documentation complete and accurate
+- Screenshots/GIFs showing categorization
+- User guide clear and helpful
+- Architecture docs updated
+
+---
+
+**Task 13.13: Polish & Final Integration**
+
+Final polish and integration testing:
+
+**Polish Checklist**:
+- [ ] All animations smooth and polished
+- [ ] Category colors visually appealing
+- [ ] Empty states helpful and encouraging
+- [ ] Error messages clear and actionable
+- [ ] Keyboard shortcuts work (collapse all, expand all)
+- [ ] Accessibility: Screen reader support
+- [ ] Responsive layout (if applicable)
+- [ ] Loading states during API calls
+- [ ] Optimistic UI updates (instant feedback)
+
+**Integration Testing**:
+- [ ] Categories persist across app restarts
+- [ ] Keyword replacement works regardless of category
+- [ ] Import/export includes categories
+- [ ] Backward compatibility with pre-Phase-13 settings
+- [ ] No breaking changes to existing functionality
+
+**Final Checks**:
+- [ ] Code review and cleanup
+- [ ] Remove debug logging
+- [ ] Optimize bundle size
+- [ ] Performance profiling
+- [ ] Memory leak check
+- [ ] Browser compatibility (Chrome, Edge, Firefox)
+
+**Acceptance**:
+- Feature is polished and production-ready
+- All integration tests pass
+- No regressions in existing features
+- User experience is smooth and intuitive
+
+---
+
+## Phase 13 Summary
+
+**What We Built**:
+- Visual categorization system for keywords
+- Collapsible category sections (like Notion toggles)
+- Drag-and-drop to organize keywords
+- Category management UI (create, rename, delete, merge)
+- Search and filter across categories
+- Category statistics on dashboard
+- Bulk operations for efficiency
+
+**Key Features**:
+✅ Organize keywords into categories
+✅ Collapsible/expandable category sections
+✅ Drag-and-drop keywords between categories
+✅ Create, rename, delete categories
+✅ Bulk move keywords
+✅ Search across all categories
+✅ Visual statistics and overview
+✅ Smooth animations and visual feedback
+
+**Important Note**:
+⚠️ Categories are **UI-only** and do **not affect** keyword matching or replacement during transcription. The TextProcessor module ignores categories entirely. Categories exist solely for visual organization and user convenience.
+
+**Benefits**:
+- Better overview of large keyword collections
+- Easier to find and manage keywords
+- Visual grouping improves usability
+- Reduces clutter in keyword manager
+- Scales well to hundreds of keywords
+
+**Technology**:
+- Backend: F#, updated Settings.fs, CategoryApi.fs
+- Frontend: F#, Fable, React, TailwindCSS
+- UI: Accordion components, drag-and-drop, modals
+- Storage: Categories stored in settings.json
+
+---
+
 ## Success Criteria
 
 ✅ Compiles without errors
@@ -1778,6 +2532,7 @@ Final optimizations and code cleanup:
 ✅ Character-by-character typing preserves clipboard
 ✅ Keyword replacement system functional
 ✅ **Web-based settings UI is modern, beautiful, and fully functional**
+⬜ **Keywords organized into collapsible categories** (Phase 13)
 
 ---
 
@@ -1787,5 +2542,6 @@ Final optimizations and code cleanup:
 - Phases 7-9: 6-8 hours
 - Phase 10: 2-3 hours
 - Phase 11: 4-6 hours
-- **Phase 12: 20-30 hours** (comprehensive web UI overhaul)
-**Next Task**: 12.1 Backend Web Server - Project Setup
+- Phase 12: 20-30 hours (comprehensive web UI overhaul)
+- **Phase 13: 12-16 hours** (keyword categorization system)
+**Next Task**: 13.1 Backend - Category Data Structure
