@@ -37,6 +37,22 @@ type KeywordReplacement = {
     Category: string option
 }
 
+/// External keywords data (stored in separate file for cloud sync)
+[<CLIMutable>]
+type KeywordData = {
+    /// List of keyword replacements
+    [<JsonPropertyName("keywordReplacements")>]
+    KeywordReplacements: KeywordReplacement list
+
+    /// List of keyword categories
+    [<JsonPropertyName("categories")>]
+    Categories: KeywordCategory list
+
+    /// Schema version for future migrations
+    [<JsonPropertyName("version")>]
+    Version: string
+}
+
 /// Typing speed configuration
 type TypingSpeed =
     | Fast      // 0ms delay
@@ -79,7 +95,7 @@ let typingSpeedToString (speed: TypingSpeed) : string =
     | Slow -> "slow"
     | Custom ms -> sprintf "custom:%d" ms
 
-/// Application settings
+/// Application settings (machine-specific, stored in settings.json)
 [<CLIMutable>]
 type AppSettings = {
     /// Virtual key code for the hotkey (e.g., 0x20 for Space)
@@ -106,13 +122,17 @@ type AppSettings = {
     [<JsonPropertyName("startWithWindows")>]
     StartWithWindows: bool
 
-    /// Keyword replacements list
-    [<JsonPropertyName("keywordReplacements")>]
-    KeywordReplacements: KeywordReplacement list
+    /// Path to external keywords file (if None, uses default location)
+    [<JsonPropertyName("keywordsFilePath")>]
+    KeywordsFilePath: string option
 
-    /// Categories list
+    /// DEPRECATED: Keyword replacements list (for migration from old format)
+    [<JsonPropertyName("keywordReplacements")>]
+    KeywordReplacements: KeywordReplacement list option
+
+    /// DEPRECATED: Categories list (for migration from old format)
     [<JsonPropertyName("categories")>]
-    Categories: KeywordCategory list
+    Categories: KeywordCategory list option
 }
 
 /// Default categories
@@ -123,6 +143,13 @@ let defaultCategories = [
     { Name = "Code Snippets"; IsExpanded = true; Color = Some "#00d4aa" }
 ]
 
+/// Default keyword data
+let defaultKeywordData = {
+    KeywordReplacements = []
+    Categories = defaultCategories
+    Version = "1.0"
+}
+
 /// Default settings
 let defaultSettings = {
     HotkeyKey = 0x5Bu  // Left Win key
@@ -131,8 +158,9 @@ let defaultSettings = {
     RecordingDuration = 0  // No limit (press and hold)
     TypingSpeedStr = "normal"  // Default to normal typing speed
     StartWithWindows = false  // Don't start with Windows by default
-    KeywordReplacements = []  // No keyword replacements by default
-    Categories = defaultCategories  // Default categories for organization
+    KeywordsFilePath = None  // Use default keywords file location
+    KeywordReplacements = None  // DEPRECATED - for migration only
+    Categories = None  // DEPRECATED - for migration only
 }
 
 /// Get the typing speed from settings
@@ -147,6 +175,16 @@ let private getSettingsDirectory () =
 /// Get the settings file path
 let private getSettingsFilePath () =
     Path.Combine(getSettingsDirectory(), "settings.json")
+
+/// Get the default keywords file path
+let getDefaultKeywordsFilePath () =
+    Path.Combine(getSettingsDirectory(), "keywords.json")
+
+/// Get the keywords file path from settings, or default if not specified
+let getKeywordsFilePath (settings: AppSettings) : string =
+    match settings.KeywordsFilePath with
+    | Some path when not (String.IsNullOrWhiteSpace(path)) -> path
+    | _ -> getDefaultKeywordsFilePath()
 
 /// JSON serializer options
 let private jsonOptions =
@@ -196,26 +234,8 @@ let load () : AppSettings =
                     else
                         settings
 
-                // Ensure KeywordReplacements is not null (handle old settings files)
-                let withKeywords =
-                    if obj.ReferenceEquals(normalizedSettings.KeywordReplacements, null) then
-                        Logger.info "KeywordReplacements not set in settings file, defaulting to empty list"
-                        { normalizedSettings with KeywordReplacements = [] }
-                    else
-                        normalizedSettings
-
-                // Ensure Categories is not null (handle old settings files from before Phase 13)
-                let finalSettings =
-                    if obj.ReferenceEquals(withKeywords.Categories, null) || withKeywords.Categories.IsEmpty then
-                        Logger.info "Categories not set in settings file, creating default categories"
-                        { withKeywords with Categories = defaultCategories }
-                    else
-                        withKeywords
-
                 Logger.info (sprintf "Settings loaded from: %s" settingsPath)
-                Logger.info (sprintf "Loaded %d keyword replacements" finalSettings.KeywordReplacements.Length)
-                Logger.info (sprintf "Loaded %d categories" finalSettings.Categories.Length)
-                finalSettings
+                normalizedSettings
         else
             Logger.info "Settings file not found, using defaults"
             defaultSettings
@@ -252,6 +272,156 @@ let save (settings: AppSettings) : bool =
     | ex ->
         Logger.error (sprintf "Error saving settings: %s" ex.Message)
         false
+
+/// Load keyword data from external file
+let loadKeywordData (filePath: string) : KeywordData =
+    try
+        if File.Exists(filePath) then
+            let json = File.ReadAllText(filePath)
+            let data = JsonSerializer.Deserialize<KeywordData>(json, jsonOptions)
+            Logger.info (sprintf "Keywords loaded from: %s" filePath)
+            Logger.info (sprintf "Loaded %d keyword replacements" data.KeywordReplacements.Length)
+            Logger.info (sprintf "Loaded %d categories" data.Categories.Length)
+            data
+        else
+            Logger.info (sprintf "Keywords file not found at %s, using defaults" filePath)
+            defaultKeywordData
+    with
+    | ex ->
+        Logger.error (sprintf "Error loading keywords from %s: %s - Using default keywords" filePath ex.Message)
+        defaultKeywordData
+
+/// Save keyword data to external file
+let saveKeywordData (filePath: string) (data: KeywordData) : bool =
+    try
+        // Create directory if it doesn't exist
+        let directory = Path.GetDirectoryName(filePath)
+        if not (String.IsNullOrEmpty(directory)) && not (Directory.Exists(directory)) then
+            Directory.CreateDirectory(directory) |> ignore
+            Logger.info (sprintf "Created keywords directory: %s" directory)
+
+        // Serialize and save
+        let json = JsonSerializer.Serialize(data, jsonOptions)
+        File.WriteAllText(filePath, json)
+        Logger.info (sprintf "Keywords saved to: %s" filePath)
+        Logger.info (sprintf "Saved %d keyword replacements" data.KeywordReplacements.Length)
+        Logger.info (sprintf "Saved %d categories" data.Categories.Length)
+        true
+    with
+    | ex ->
+        Logger.error (sprintf "Error saving keywords to %s: %s" filePath ex.Message)
+        false
+
+/// Validate that a keywords file path is valid
+let validateKeywordsFilePath (path: string) : Result<string, string> =
+    try
+        if String.IsNullOrWhiteSpace(path) then
+            Error "Keywords file path cannot be empty"
+        else
+            // Check if path is absolute
+            if not (Path.IsPathRooted(path)) then
+                Error "Keywords file path must be an absolute path"
+            else
+                // Check if directory exists or can be created
+                let directory = Path.GetDirectoryName(path)
+                if String.IsNullOrEmpty(directory) then
+                    Error "Invalid keywords file path"
+                else
+                    // Try to ensure directory exists
+                    if not (Directory.Exists(directory)) then
+                        // Check if parent directory exists (for cloud storage paths)
+                        let parentDir = Directory.GetParent(directory)
+                        if parentDir = null || not parentDir.Exists then
+                            Error (sprintf "Directory does not exist: %s" directory)
+                        else
+                            Ok path
+                    else
+                        Ok path
+    with
+    | ex ->
+        Error (sprintf "Invalid path: %s" ex.Message)
+
+/// Migrate keywords from old settings format to external file
+/// Returns updated settings with KeywordsFilePath set
+let migrateKeywordsToExternalFile (settings: AppSettings) : AppSettings =
+    try
+        // Check if migration is needed (old settings have keywords embedded)
+        match settings.KeywordReplacements, settings.Categories with
+        | Some keywords, Some categories when keywords.Length > 0 || categories.Length > 0 ->
+            Logger.info "Migrating keywords from settings.json to external keywords.json file..."
+
+            // Create keyword data from old format
+            let keywordData = {
+                KeywordReplacements = keywords
+                Categories = categories
+                Version = "1.0"
+            }
+
+            // Save to default keywords file location
+            let keywordsPath = getDefaultKeywordsFilePath()
+            if saveKeywordData keywordsPath keywordData then
+                Logger.info (sprintf "Successfully migrated %d keywords and %d categories to %s" keywords.Length categories.Length keywordsPath)
+
+                // Update settings to remove old fields and set new path
+                let migratedSettings = {
+                    settings with
+                        KeywordsFilePath = None  // Use default location
+                        KeywordReplacements = None  // Clear deprecated field
+                        Categories = None  // Clear deprecated field
+                }
+
+                // Save updated settings
+                if save migratedSettings then
+                    Logger.info "Settings updated after keyword migration"
+                    migratedSettings
+                else
+                    Logger.warning "Failed to save updated settings after migration, but keywords file was created"
+                    migratedSettings
+            else
+                Logger.error "Failed to save keywords during migration, keeping old format"
+                settings
+
+        | Some keywords, None when keywords.Length > 0 ->
+            // Only keywords, no categories - migrate with default categories
+            Logger.info "Migrating keywords (without categories) from settings.json..."
+
+            let keywordData = {
+                KeywordReplacements = keywords
+                Categories = defaultCategories
+                Version = "1.0"
+            }
+
+            let keywordsPath = getDefaultKeywordsFilePath()
+            if saveKeywordData keywordsPath keywordData then
+                Logger.info (sprintf "Successfully migrated %d keywords to %s" keywords.Length keywordsPath)
+                { settings with KeywordsFilePath = None; KeywordReplacements = None; Categories = None }
+            else
+                settings
+
+        | None, Some categories when categories.Length > 0 ->
+            // Only categories, no keywords - migrate anyway
+            Logger.info "Migrating categories (without keywords) from settings.json..."
+
+            let keywordData = {
+                KeywordReplacements = []
+                Categories = categories
+                Version = "1.0"
+            }
+
+            let keywordsPath = getDefaultKeywordsFilePath()
+            if saveKeywordData keywordsPath keywordData then
+                Logger.info (sprintf "Successfully migrated %d categories to %s" categories.Length keywordsPath)
+                { settings with KeywordsFilePath = None; KeywordReplacements = None; Categories = None }
+            else
+                settings
+
+        | _ ->
+            // No migration needed - either already migrated or no keywords to migrate
+            settings
+    with
+    | ex ->
+        Logger.error (sprintf "Error during keyword migration: %s" ex.Message)
+        settings
 
 /// Get the display name for modifiers
 let getModifierDisplayName (modifiers: uint32) : string =

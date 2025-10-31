@@ -22,11 +22,14 @@ let init () =
         EditingCategory = None
         ExpandedCategories = Set.empty
         Toasts = []
+        KeywordsPath = NotStarted
+        EditingKeywordsPath = None
     }
     // Load initial data
     model, Cmd.batch [
         Cmd.ofMsg LoadSettings
         Cmd.ofMsg LoadStatus
+        Cmd.ofMsg LoadKeywordsPath
     ]
 
 // ============================================================================
@@ -237,6 +240,84 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | CancelEditCategory ->
         { model with EditingCategory = None }, Cmd.none
 
+    | LoadKeywordsPath ->
+        { model with KeywordsPath = LoadingState.Loading },
+        Cmd.OfPromise.either
+            Api.getKeywordsPath
+            ()
+            KeywordsPathLoaded
+            (fun ex -> KeywordsPathLoaded (Result.Error ex.Message))
+
+    | KeywordsPathLoaded (Result.Ok pathInfo) ->
+        { model with KeywordsPath = LoadingState.Loaded pathInfo }, Cmd.none
+
+    | KeywordsPathLoaded (Result.Error err) ->
+        { model with KeywordsPath = LoadingState.Error err },
+        Cmd.ofMsg (ShowToast (sprintf "Failed to load keywords path: %s" err, ToastType.Error))
+
+    | StartEditingKeywordsPath ->
+        match model.KeywordsPath with
+        | LoadingState.Loaded pathInfo ->
+            { model with EditingKeywordsPath = Some pathInfo.CurrentPath }, Cmd.none
+        | _ ->
+            model, Cmd.none
+
+    | UpdateEditingKeywordsPath path ->
+        { model with EditingKeywordsPath = Some path }, Cmd.none
+
+    | SaveKeywordsPath ->
+        match model.EditingKeywordsPath with
+        | Some path when path.Trim() <> "" ->
+            { model with EditingKeywordsPath = None },
+            Cmd.OfPromise.either
+                Api.updateKeywordsPath
+                (Some path)
+                KeywordsPathSaved
+                (fun ex -> KeywordsPathSaved (Result.Error ex.Message))
+        | _ ->
+            model, Cmd.none
+
+    | KeywordsPathSaved (Result.Ok newPath) ->
+        model,
+        Cmd.batch [
+            Cmd.ofMsg LoadKeywordsPath
+            Cmd.ofMsg (ShowToast (sprintf "Keywords file path updated to: %s" newPath, ToastType.Success))
+        ]
+
+    | KeywordsPathSaved (Result.Error err) ->
+        model,
+        Cmd.ofMsg (ShowToast (sprintf "Failed to update keywords path: %s" err, ToastType.Error))
+
+    | ResetKeywordsPathToDefault ->
+        { model with EditingKeywordsPath = None },
+        Cmd.OfPromise.either
+            Api.updateKeywordsPath
+            None
+            KeywordsPathSaved
+            (fun ex -> KeywordsPathSaved (Result.Error ex.Message))
+
+    | CancelEditingKeywordsPath ->
+        { model with EditingKeywordsPath = None }, Cmd.none
+
+    | ExportKeywords (targetPath, setAsActive) ->
+        model,
+        Cmd.OfPromise.either
+            (fun (p, a) -> Api.exportKeywordsToFile p a)
+            (targetPath, setAsActive)
+            KeywordsExported
+            (fun ex -> KeywordsExported (Result.Error ex.Message))
+
+    | KeywordsExported (Result.Ok newPath) ->
+        model,
+        Cmd.batch [
+            Cmd.ofMsg LoadKeywordsPath
+            Cmd.ofMsg (ShowToast (sprintf "Keywords exported to: %s" newPath, ToastType.Success))
+        ]
+
+    | KeywordsExported (Result.Error err) ->
+        model,
+        Cmd.ofMsg (ShowToast (sprintf "Failed to export keywords: %s" err, ToastType.Error))
+
 // ============================================================================
 // View
 // ============================================================================
@@ -303,7 +384,7 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             | SystemSettings ->
                                 Components.SystemSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | GeneralSettings ->
-                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
+                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey model.KeywordsPath model.EditingKeywordsPath dispatch
                             | KeywordSettings ->
                                 Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
                         ]

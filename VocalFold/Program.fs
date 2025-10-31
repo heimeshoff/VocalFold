@@ -58,9 +58,21 @@ let main argv =
 
             // Load settings and check if this is the first run
             let mutable currentSettings, isFirstRun = Settings.loadWithFirstRunCheck()
+
+            // Perform migration if needed (from old embedded keywords to external file)
+            currentSettings <- Settings.migrateKeywordsToExternalFile currentSettings
+
+            // Load keywords from external file
+            let keywordsPath = Settings.getKeywordsFilePath currentSettings
+            let mutable currentKeywordData = Settings.loadKeywordData keywordsPath
+
             Logger.info "Loaded settings:"
             Logger.info (sprintf "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings))
             Logger.info (sprintf "   Model: %s" currentSettings.ModelSize)
+            Logger.info (sprintf "   Keywords file: %s" keywordsPath)
+            Logger.info (sprintf "   Loaded %d keyword replacements in %d categories"
+                currentKeywordData.KeywordReplacements.Length
+                currentKeywordData.Categories.Length)
             if isFirstRun then
                 Logger.info "First run detected - will open settings after initialization"
 
@@ -90,6 +102,9 @@ let main argv =
 
                         let startupChanged =
                             newSettings.StartWithWindows <> currentSettings.StartWithWindows
+
+                        let keywordsPathChanged =
+                            Settings.getKeywordsFilePath newSettings <> Settings.getKeywordsFilePath currentSettings
 
                         // Update current settings
                         currentSettings <- newSettings
@@ -125,7 +140,70 @@ let main argv =
                                         Logger.info "Disabled start with Windows"
                                     else
                                         Logger.error "Failed to disable start with Windows"
+
+                            if keywordsPathChanged then
+                                // Reload keywords from new path
+                                let newKeywordsPath = Settings.getKeywordsFilePath newSettings
+                                Logger.info (sprintf "Keywords file path changed to: %s" newKeywordsPath)
+                                currentKeywordData <- Settings.loadKeywordData newKeywordsPath
+                                Logger.info (sprintf "Reloaded %d keyword replacements from new location"
+                                    currentKeywordData.KeywordReplacements.Length)
                         | None -> ()
+
+                    // Callback for when keywords change externally (file watcher)
+                    let onKeywordsChanged (newKeywordData: Settings.KeywordData) =
+                        Logger.info "Keywords changed externally (via file watcher)"
+                        currentKeywordData <- newKeywordData
+                        Logger.info (sprintf "Reloaded %d keyword replacements and %d categories"
+                            newKeywordData.KeywordReplacements.Length
+                            newKeywordData.Categories.Length)
+
+                    // Callback to restart file watcher when keywords path changes
+                    let restartFileWatcher (newPath: string) =
+                        match webServerState with
+                        | Some state ->
+                            try
+                                // Stop existing watcher
+                                match !state.FileWatcherRef with
+                                | Some watcher ->
+                                    FileWatcher.stopWatcher watcher
+                                    Logger.info "Stopped old file watcher"
+                                | None -> ()
+
+                                // Create new watcher for new path
+                                let reloadCallback = fun () ->
+                                    try
+                                        Logger.info "🔄 Reloading keywords from external file..."
+                                        let keywordData = Settings.loadKeywordData newPath
+                                        onKeywordsChanged keywordData
+                                        Logger.info "✅ Keywords reloaded successfully"
+                                    with
+                                    | ex ->
+                                        Logger.error (sprintf "Failed to reload keywords: %s" ex.Message)
+
+                                let newWatcher =
+                                    try
+                                        if System.IO.File.Exists(newPath) then
+                                            Some (FileWatcher.createWatcher newPath reloadCallback)
+                                        else
+                                            Logger.info (sprintf "Keywords file not found, watcher will start when file is created: %s" newPath)
+                                            None
+                                    with
+                                    | ex ->
+                                        Logger.warning (sprintf "Could not start file watcher: %s" ex.Message)
+                                        None
+
+                                // Update state ref
+                                state.FileWatcherRef := newWatcher
+
+                                match newWatcher with
+                                | Some _ -> Logger.info (sprintf "Started new file watcher for: %s" newPath)
+                                | None -> ()
+                            with
+                            | ex ->
+                                Logger.error (sprintf "Error restarting file watcher: %s" ex.Message)
+                        | None ->
+                            Logger.warning "Cannot restart file watcher - web server not running"
 
                     match webServerState with
                     | Some state ->
@@ -139,6 +217,8 @@ let main argv =
 
                         let serverConfig: WebServer.ServerConfig = {
                             OnSettingsChanged = onSettingsChanged
+                            OnKeywordsChanged = onKeywordsChanged
+                            RestartFileWatcher = restartFileWatcher
                         }
 
                         let state = WebServer.start serverConfig |> Async.RunSynchronously
@@ -239,8 +319,9 @@ let main argv =
                                             Logger.warning "No speech detected in audio"
                                             overlayManager.Hide()
                                         else
+                                            // Use current keyword data (already loaded and kept in sync)
                                             // Process transcription and check for special commands
-                                            let processingResult = TextProcessor.processTranscriptionWithCommands transcription currentSettings.KeywordReplacements
+                                            let processingResult = TextProcessor.processTranscriptionWithCommands transcription currentKeywordData.KeywordReplacements
 
                                             match processingResult with
                                             | TextProcessor.OpenSettings ->

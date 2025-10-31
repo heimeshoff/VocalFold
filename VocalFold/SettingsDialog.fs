@@ -29,6 +29,11 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
 
     // Track the new settings
     let mutable newSettings = currentSettings
+
+    // Load keywords from external file for this dialog
+    let keywordsPath = Settings.getKeywordsFilePath currentSettings
+    let mutable keywordData = Settings.loadKeywordData keywordsPath
+
     let mutable isRecording = false
     let mutable recordedModifiers = 0u
     let mutable recordedKey = 0u
@@ -348,7 +353,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     // Function to refresh keywords grid
     let refreshKeywordsGrid () =
         keywordsGrid.Rows.Clear()
-        for kw in newSettings.KeywordReplacements do
+        for kw in keywordData.KeywordReplacements do
             let displayReplacement =
                 if kw.Replacement.Length > 50 then
                     kw.Replacement.Substring(0, 47) + "..."
@@ -581,7 +586,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     addKeywordBtn.Click.Add(fun _ ->
         match showKeywordDialog "Add Keyword" None with
         | Some kw ->
-            newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ [kw] }
+            keywordData <- { keywordData with KeywordReplacements = keywordData.KeywordReplacements @ [kw] }
             refreshKeywordsGrid()
         | None -> ()
     )
@@ -590,13 +595,13 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     editKeywordBtn.Click.Add(fun _ ->
         if keywordsGrid.SelectedRows.Count > 0 then
             let index = keywordsGrid.SelectedRows.[0].Index
-            let currentKw = newSettings.KeywordReplacements.[index]
+            let currentKw = keywordData.KeywordReplacements.[index]
             match showKeywordDialog "Edit Keyword" (Some currentKw) with
             | Some kw ->
                 let updatedList =
-                    newSettings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.mapi (fun i k -> if i = index then kw else k)
-                newSettings <- { newSettings with KeywordReplacements = updatedList }
+                keywordData <- { keywordData with KeywordReplacements = updatedList }
                 refreshKeywordsGrid()
             | None -> ()
         else
@@ -607,7 +612,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     deleteKeywordBtn.Click.Add(fun _ ->
         if keywordsGrid.SelectedRows.Count > 0 then
             let index = keywordsGrid.SelectedRows.[0].Index
-            let kw = newSettings.KeywordReplacements.[index]
+            let kw = keywordData.KeywordReplacements.[index]
             let confirmResult = MessageBox.Show(
                 sprintf "Are you sure you want to delete the keyword \"%s\"?" kw.Keyword,
                 "Confirm Delete",
@@ -616,11 +621,11 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
             )
             if confirmResult = DialogResult.Yes then
                 let updatedList =
-                    newSettings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.mapi (fun i k -> (i, k))
                     |> List.filter (fun (i, _) -> i <> index)
                     |> List.map snd
-                newSettings <- { newSettings with KeywordReplacements = updatedList }
+                keywordData <- { keywordData with KeywordReplacements = updatedList }
                 refreshKeywordsGrid()
         else
             MessageBox.Show("Please select a keyword to delete", "No Selection", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
@@ -636,7 +641,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
             try
                 let json = System.IO.File.ReadAllText(openDialog.FileName)
                 let imported = System.Text.Json.JsonSerializer.Deserialize<Settings.KeywordReplacement list>(json)
-                newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ imported }
+                keywordData <- { keywordData with KeywordReplacements = keywordData.KeywordReplacements @ imported }
                 refreshKeywordsGrid()
                 MessageBox.Show(sprintf "Imported %d keywords" imported.Length, "Import Successful", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
             with
@@ -646,7 +651,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
 
     // Export keywords button
     exportKeywordBtn.Click.Add(fun _ ->
-        if newSettings.KeywordReplacements.IsEmpty then
+        if keywordData.KeywordReplacements.IsEmpty then
             MessageBox.Show("No keywords to export", "Export", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
         else
             use saveDialog = new SaveFileDialog(
@@ -658,9 +663,9 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                 try
                     let jsonOptions = System.Text.Json.JsonSerializerOptions()
                     jsonOptions.WriteIndented <- true
-                    let json = System.Text.Json.JsonSerializer.Serialize(newSettings.KeywordReplacements, jsonOptions)
+                    let json = System.Text.Json.JsonSerializer.Serialize(keywordData.KeywordReplacements, jsonOptions)
                     System.IO.File.WriteAllText(saveDialog.FileName, json)
-                    MessageBox.Show(sprintf "Exported %d keywords" newSettings.KeywordReplacements.Length, "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
+                    MessageBox.Show(sprintf "Exported %d keywords" keywordData.KeywordReplacements.Length, "Export Successful", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
                 with
                 | ex ->
                     MessageBox.Show(sprintf "Error exporting keywords: %s" ex.Message, "Export Error", MessageBoxButtons.OK, MessageBoxIcon.Error) |> ignore
@@ -676,7 +681,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
             MessageBoxIcon.Question
         )
         if confirmResult = DialogResult.Yes then
-            newSettings <- { newSettings with KeywordReplacements = newSettings.KeywordReplacements @ examples }
+            keywordData <- { keywordData with KeywordReplacements = keywordData.KeywordReplacements @ examples }
             refreshKeywordsGrid()
             MessageBox.Show(sprintf "Added %d example keywords" examples.Length, "Examples Added", MessageBoxButtons.OK, MessageBoxIcon.Information) |> ignore
     )
@@ -765,6 +770,10 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
     let result = form.ShowDialog()
 
     if result = DialogResult.OK then
+        // Save keywords to external file before returning
+        let keywordsPath = Settings.getKeywordsFilePath newSettings
+        Settings.saveKeywordData keywordsPath keywordData |> ignore
+
         Accepted newSettings
     else
         Cancelled
