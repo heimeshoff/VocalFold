@@ -1,6 +1,7 @@
 module WebServer
 
 open System
+open System.IO
 open System.Net
 open System.Net.Sockets
 open System.Text.Json
@@ -22,12 +23,15 @@ open Giraffe
 
 type ServerConfig = {
     OnSettingsChanged: Settings.AppSettings -> unit
+    OnKeywordsChanged: Settings.KeywordData -> unit
+    RestartFileWatcher: string -> unit
 }
 
 type ServerState = {
     Port: int
     Host: IHost
     CancellationTokenSource: CancellationTokenSource
+    FileWatcherRef: FileSystemWatcher option ref
 }
 
 // ============================================================================
@@ -63,7 +67,18 @@ let getSettingsHandler: HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
-            return! json settings next ctx
+            // Load keywords from external file and merge into response for frontend compatibility
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
+
+            // Create a response that includes keywords for frontend compatibility
+            let responseSettings = {
+                settings with
+                    KeywordReplacements = Some keywordData.KeywordReplacements
+                    Categories = Some keywordData.Categories
+            }
+
+            return! json responseSettings next ctx
         }
 
 /// Handler for PUT /api/settings
@@ -73,7 +88,7 @@ let updateSettingsHandler (config: ServerConfig) : HttpHandler =
             let! newSettings = ctx.BindJsonAsync<Settings.AppSettings>()
 
             // Save settings to disk
-            Settings.save newSettings
+            Settings.save newSettings |> ignore
 
             // Notify the application of settings change
             config.OnSettingsChanged newSettings
@@ -86,7 +101,9 @@ let getKeywordsHandler: HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
-            return! json settings.KeywordReplacements next ctx
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
+            return! json keywordData.KeywordReplacements next ctx
         }
 
 /// Handler for POST /api/keywords
@@ -95,9 +112,11 @@ let addKeywordHandler (config: ServerConfig) : HttpHandler =
         task {
             let! keyword = ctx.BindJsonAsync<Settings.KeywordReplacement>()
             let settings = Settings.load()
-            let updatedSettings = { settings with KeywordReplacements = settings.KeywordReplacements @ [keyword] }
-            Settings.save updatedSettings
-            config.OnSettingsChanged updatedSettings
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
+            let updatedData = { keywordData with KeywordReplacements = keywordData.KeywordReplacements @ [keyword] }
+            Settings.saveKeywordData keywordsPath updatedData |> ignore
+            config.OnSettingsChanged settings
             return! json {| success = true |} next ctx
         }
 
@@ -107,14 +126,16 @@ let updateKeywordHandler (config: ServerConfig) (index: int) : HttpHandler =
         task {
             let! keyword = ctx.BindJsonAsync<Settings.KeywordReplacement>()
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
-            if index >= 0 && index < settings.KeywordReplacements.Length then
+            if index >= 0 && index < keywordData.KeywordReplacements.Length then
                 let updatedKeywords =
-                    settings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.mapi (fun i k -> if i = index then keyword else k)
-                let updatedSettings = { settings with KeywordReplacements = updatedKeywords }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with KeywordReplacements = updatedKeywords }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
             else
                 ctx.SetStatusCode 404
@@ -126,16 +147,18 @@ let deleteKeywordHandler (config: ServerConfig) (index: int) : HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
-            if index >= 0 && index < settings.KeywordReplacements.Length then
+            if index >= 0 && index < keywordData.KeywordReplacements.Length then
                 let updatedKeywords =
-                    settings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.mapi (fun i k -> (i, k))
                     |> List.filter (fun (i, _) -> i <> index)
                     |> List.map snd
-                let updatedSettings = { settings with KeywordReplacements = updatedKeywords }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with KeywordReplacements = updatedKeywords }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
             else
                 ctx.SetStatusCode 404
@@ -147,10 +170,12 @@ let addExampleKeywordsHandler (config: ServerConfig) : HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
             let examples = TextProcessor.getExampleReplacements()
-            let updatedSettings = { settings with KeywordReplacements = settings.KeywordReplacements @ examples }
-            Settings.save updatedSettings
-            config.OnSettingsChanged updatedSettings
+            let updatedData = { keywordData with KeywordReplacements = keywordData.KeywordReplacements @ examples }
+            Settings.saveKeywordData keywordsPath updatedData |> ignore
+            config.OnSettingsChanged settings
             return! json {| success = true; added = examples.Length |} next ctx
         }
 
@@ -163,7 +188,9 @@ let getCategoriesHandler: HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
-            return! json settings.Categories next ctx
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
+            return! json keywordData.Categories next ctx
         }
 
 /// Handler for POST /api/categories
@@ -172,17 +199,19 @@ let createCategoryHandler (config: ServerConfig) : HttpHandler =
         task {
             let! category = ctx.BindJsonAsync<Settings.KeywordCategory>()
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
             // Check if category name already exists
-            let nameExists = settings.Categories |> List.exists (fun c -> c.Name = category.Name)
+            let nameExists = keywordData.Categories |> List.exists (fun c -> c.Name = category.Name)
 
             if nameExists then
                 ctx.SetStatusCode 400
                 return! json {| error = "Category name already exists" |} next ctx
             else
-                let updatedSettings = { settings with Categories = settings.Categories @ [category] }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with Categories = keywordData.Categories @ [category] }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
         }
 
@@ -192,9 +221,11 @@ let updateCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
         task {
             let! updatedCategory = ctx.BindJsonAsync<Settings.KeywordCategory>()
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
             // Find the category to update
-            let categoryExists = settings.Categories |> List.exists (fun c -> c.Name = name)
+            let categoryExists = keywordData.Categories |> List.exists (fun c -> c.Name = name)
 
             if not categoryExists then
                 ctx.SetStatusCode 404
@@ -202,24 +233,24 @@ let updateCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
             else
                 // Update the category
                 let updatedCategories =
-                    settings.Categories
+                    keywordData.Categories
                     |> List.map (fun c -> if c.Name = name then updatedCategory else c)
 
                 // Also update keywords that reference the old category name (if renamed)
                 let updatedKeywords =
                     if name <> updatedCategory.Name then
-                        settings.KeywordReplacements
+                        keywordData.KeywordReplacements
                         |> List.map (fun k ->
                             match k.Category with
                             | Some cat when cat = name -> { k with Category = Some updatedCategory.Name }
                             | _ -> k
                         )
                     else
-                        settings.KeywordReplacements
+                        keywordData.KeywordReplacements
 
-                let updatedSettings = { settings with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
         }
 
@@ -228,6 +259,8 @@ let deleteCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
             // Prevent deletion of "Uncategorized"
             if name = "Uncategorized" then
@@ -235,20 +268,20 @@ let deleteCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
                 return! json {| error = "Cannot delete Uncategorized category" |} next ctx
             else
                 // Remove the category
-                let updatedCategories = settings.Categories |> List.filter (fun c -> c.Name <> name)
+                let updatedCategories = keywordData.Categories |> List.filter (fun c -> c.Name <> name)
 
                 // Move all keywords from this category to "Uncategorized"
                 let updatedKeywords =
-                    settings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.map (fun k ->
                         match k.Category with
                         | Some cat when cat = name -> { k with Category = Some "Uncategorized" }
                         | _ -> k
                     )
 
-                let updatedSettings = { settings with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
         }
 
@@ -257,15 +290,17 @@ let toggleCategoryStateHandler (config: ServerConfig) (name: string) : HttpHandl
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
             // Toggle the IsExpanded state
             let updatedCategories =
-                settings.Categories
+                keywordData.Categories
                 |> List.map (fun c -> if c.Name = name then { c with IsExpanded = not c.IsExpanded } else c)
 
-            let updatedSettings = { settings with Categories = updatedCategories }
-            Settings.save updatedSettings
-            config.OnSettingsChanged updatedSettings
+            let updatedData = { keywordData with Categories = updatedCategories }
+            Settings.saveKeywordData keywordsPath updatedData |> ignore
+            config.OnSettingsChanged settings
             return! json {| success = true |} next ctx
         }
 
@@ -275,18 +310,118 @@ let moveKeywordToCategoryHandler (config: ServerConfig) (index: int) : HttpHandl
         task {
             let! body = ctx.BindJsonAsync<{| category: string option |}>()
             let settings = Settings.load()
+            let keywordsPath = Settings.getKeywordsFilePath settings
+            let keywordData = Settings.loadKeywordData keywordsPath
 
-            if index >= 0 && index < settings.KeywordReplacements.Length then
+            if index >= 0 && index < keywordData.KeywordReplacements.Length then
                 let updatedKeywords =
-                    settings.KeywordReplacements
+                    keywordData.KeywordReplacements
                     |> List.mapi (fun i k -> if i = index then { k with Category = body.category } else k)
-                let updatedSettings = { settings with KeywordReplacements = updatedKeywords }
-                Settings.save updatedSettings
-                config.OnSettingsChanged updatedSettings
+                let updatedData = { keywordData with KeywordReplacements = updatedKeywords }
+                Settings.saveKeywordData keywordsPath updatedData |> ignore
+                config.OnSettingsChanged settings
                 return! json {| success = true |} next ctx
             else
                 ctx.SetStatusCode 404
                 return! json {| error = "Keyword not found" |} next ctx
+        }
+
+// ============================================================================
+// Keywords File Path API Handlers
+// ============================================================================
+
+/// Handler for GET /api/settings/keywords-path
+let getKeywordsPathHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+            let currentPath = Settings.getKeywordsFilePath settings
+            let defaultPath = Settings.getDefaultKeywordsFilePath()
+            let isDefault = currentPath = defaultPath
+
+            return! json {|
+                currentPath = currentPath
+                defaultPath = defaultPath
+                isDefault = isDefault
+            |} next ctx
+        }
+
+/// Handler for PUT /api/settings/keywords-path
+let updateKeywordsPathHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! body = ctx.BindJsonAsync<{| path: string option |}>()
+            let settings = Settings.load()
+
+            // Validate the path if provided
+            match body.path with
+            | Some path when not (String.IsNullOrWhiteSpace(path)) ->
+                match Settings.validateKeywordsFilePath path with
+                | Ok validPath ->
+                    // Update settings with new path
+                    let updatedSettings = { settings with KeywordsFilePath = Some validPath }
+
+                    // Save settings
+                    if Settings.save updatedSettings then
+                        config.OnSettingsChanged updatedSettings
+                        // Restart file watcher with new path
+                        config.RestartFileWatcher validPath
+                        return! json {| success = true; path = validPath |} next ctx
+                    else
+                        ctx.SetStatusCode 500
+                        return! json {| error = "Failed to save settings" |} next ctx
+
+                | Error errorMsg ->
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+
+            | _ ->
+                // Reset to default path
+                let updatedSettings = { settings with KeywordsFilePath = None }
+
+                if Settings.save updatedSettings then
+                    config.OnSettingsChanged updatedSettings
+                    let defaultPath = Settings.getDefaultKeywordsFilePath()
+                    // Restart file watcher with default path
+                    config.RestartFileWatcher defaultPath
+                    return! json {| success = true; path = defaultPath |} next ctx
+                else
+                    ctx.SetStatusCode 500
+                    return! json {| error = "Failed to save settings" |} next ctx
+        }
+
+/// Handler for POST /api/keywords/export-to-file
+let exportKeywordsToFileHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! body = ctx.BindJsonAsync<{| targetPath: string; setAsActive: bool |}>()
+            let settings = Settings.load()
+
+            // Validate target path
+            match Settings.validateKeywordsFilePath body.targetPath with
+            | Ok validPath ->
+                // Load current keywords
+                let currentPath = Settings.getKeywordsFilePath settings
+                let keywordData = Settings.loadKeywordData currentPath
+
+                // Save to new location
+                if Settings.saveKeywordData validPath keywordData then
+                    // If requested, update settings to use new path
+                    if body.setAsActive then
+                        let updatedSettings = { settings with KeywordsFilePath = Some validPath }
+                        Settings.save updatedSettings |> ignore
+                        config.OnSettingsChanged updatedSettings
+                        // Restart file watcher with new path
+                        config.RestartFileWatcher validPath
+
+                    return! json {| success = true; path = validPath |} next ctx
+                else
+                    ctx.SetStatusCode 500
+                    return! json {| error = "Failed to export keywords file" |} next ctx
+
+            | Error errorMsg ->
+                ctx.SetStatusCode 400
+                return! json {| error = errorMsg |} next ctx
         }
 
 // ============================================================================
@@ -300,9 +435,12 @@ let webApp (config: ServerConfig) : HttpHandler =
                 GET  >=> route "/status" >=> getStatusHandler
                 GET  >=> route "/settings" >=> getSettingsHandler
                 PUT  >=> route "/settings" >=> updateSettingsHandler config
+                GET  >=> route "/settings/keywords-path" >=> getKeywordsPathHandler
+                PUT  >=> route "/settings/keywords-path" >=> updateKeywordsPathHandler config
                 GET  >=> route "/keywords" >=> getKeywordsHandler
                 POST >=> route "/keywords" >=> addKeywordHandler config
                 POST >=> route "/keywords/examples" >=> addExampleKeywordsHandler config
+                POST >=> route "/keywords/export-to-file" >=> exportKeywordsToFileHandler config
                 routef "/keywords/%i" (fun index ->
                     choose [
                         PUT    >=> updateKeywordHandler config index
@@ -422,10 +560,37 @@ let start (config: ServerConfig) : Async<ServerState> =
 
         Logger.info $"Web server started on http://localhost:{port}"
 
+        // Set up file watcher for keywords file
+        let settings = Settings.load()
+        let keywordsPath = Settings.getKeywordsFilePath settings
+
+        let reloadCallback = fun () ->
+            try
+                Logger.info "🔄 Reloading keywords from external file..."
+                let keywordData = Settings.loadKeywordData keywordsPath
+                config.OnKeywordsChanged keywordData
+                Logger.info "✅ Keywords reloaded successfully"
+            with
+            | ex ->
+                Logger.error (sprintf "Failed to reload keywords: %s" ex.Message)
+
+        let fileWatcher =
+            try
+                if File.Exists(keywordsPath) then
+                    Some (FileWatcher.createWatcher keywordsPath reloadCallback)
+                else
+                    Logger.info (sprintf "Keywords file not found at startup: %s" keywordsPath)
+                    None
+            with
+            | ex ->
+                Logger.warning (sprintf "Could not start file watcher: %s" ex.Message)
+                None
+
         return {
             Port = port
             Host = host
             CancellationTokenSource = cts
+            FileWatcherRef = ref fileWatcher
         }
     }
 
@@ -433,6 +598,11 @@ let start (config: ServerConfig) : Async<ServerState> =
 let stop (state: ServerState) : Async<unit> =
     async {
         try
+            // Stop file watcher first
+            match !state.FileWatcherRef with
+            | Some watcher -> FileWatcher.stopWatcher watcher
+            | None -> ()
+
             state.CancellationTokenSource.Cancel()
             do! state.Host.StopAsync() |> Async.AwaitTask
             state.Host.Dispose()

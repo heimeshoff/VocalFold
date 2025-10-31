@@ -46,7 +46,8 @@ let appSettingsDecoder: Decoder<AppSettings> =
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
         TypingSpeed = get.Required.Field "typingSpeed" Decode.string
         StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
-        KeywordReplacements = get.Required.Field "keywordReplacements" (Decode.list keywordReplacementDecoder)
+        // Phase 15: Keywords are now in external file, these are deprecated but kept for backward compatibility
+        KeywordReplacements = get.Optional.Field "keywordReplacements" (Decode.list keywordReplacementDecoder) |> Option.defaultValue []
         Categories = get.Optional.Field "categories" (Decode.list keywordCategoryDecoder) |> Option.defaultValue []
     })
 
@@ -333,3 +334,84 @@ let toggleCategoryState (name: string) : JS.Promise<Result<unit, string>> =
         with ex ->
             return Result.Error (sprintf "Failed to toggle category state: %s" ex.Message)
     } |> Async.StartAsPromise
+
+// ============================================================================
+// Keywords File Path API Functions
+// ============================================================================
+
+let keywordsPathInfoDecoder: Decoder<Types.KeywordsPathInfo> =
+    Decode.object (fun get -> {
+        CurrentPath = get.Required.Field "currentPath" Decode.string
+        DefaultPath = get.Required.Field "defaultPath" Decode.string
+        IsDefault = get.Required.Field "isDefault" Decode.bool
+    })
+
+/// Get the current keywords file path
+let getKeywordsPath () : JS.Promise<Result<Types.KeywordsPathInfo, string>> =
+    async {
+        try
+            let! response = Http.request (baseUrl + "/api/settings/keywords-path") |> Http.method GET |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString keywordsPathInfoDecoder response.responseText with
+                | Result.Ok pathInfo -> return Result.Ok pathInfo
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to get keywords path: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Update the keywords file path (or reset to default if None)
+let updateKeywordsPath (path: string option) : JS.Promise<Result<string, string>> =
+    async {
+        try
+            let pathValue = match path with | Some p -> Encode.string p | None -> Encode.nil
+            let json = Encode.toString 0 (Encode.object [ "path", pathValue ])
+            let! response =
+                Http.request (baseUrl + "/api/settings/keywords-path")
+                |> Http.method PUT
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                let decoder = Decode.object (fun get -> get.Required.Field "path" Decode.string)
+                match Decode.fromString decoder response.responseText with
+                | Result.Ok newPath -> return Result.Ok newPath
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to update keywords path: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Export keywords to a file
+let exportKeywordsToFile (targetPath: string) (setAsActive: bool) : JS.Promise<Result<string, string>> =
+    async {
+        try
+            let json = Encode.toString 0 (Encode.object [
+                "targetPath", Encode.string targetPath
+                "setAsActive", Encode.bool setAsActive
+            ])
+            let! response =
+                Http.request (baseUrl + "/api/keywords/export-to-file")
+                |> Http.method POST
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                let decoder = Decode.object (fun get -> get.Required.Field "path" Decode.string)
+                match Decode.fromString decoder response.responseText with
+                | Result.Ok newPath -> return Result.Ok newPath
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to export keywords: %s" ex.Message)
+    } |> Async.StartAsPromise
+

@@ -59,6 +59,12 @@ and ToastType =
     | Info
     | Warning
 
+type KeywordsPathInfo = {
+    CurrentPath: string
+    DefaultPath: string
+    IsDefault: bool
+}
+
 type Model = {
     CurrentPage: Page
     Settings: LoadingState<AppSettings>
@@ -69,6 +75,8 @@ type Model = {
     EditingCategory: KeywordCategory option  // Category being created/edited
     ExpandedCategories: Set<string>  // Set of expanded category names
     Toasts: Toast list
+    KeywordsPath: LoadingState<KeywordsPathInfo>  // Keywords file path info
+    EditingKeywordsPath: string option  // Path being edited in the UI
 }
 
 // ============================================================================
@@ -114,6 +122,18 @@ type Msg =
     | SaveCategory of KeywordCategory
     | DeleteCategory of string
     | CancelEditCategory
+
+    // Keywords File Path
+    | LoadKeywordsPath
+    | KeywordsPathLoaded of Result<KeywordsPathInfo, string>
+    | StartEditingKeywordsPath
+    | UpdateEditingKeywordsPath of string
+    | SaveKeywordsPath
+    | KeywordsPathSaved of Result<string, string>
+    | ResetKeywordsPathToDefault
+    | CancelEditingKeywordsPath
+    | ExportKeywords of string * bool
+    | KeywordsExported of Result<string, string>
 
     // UI
     | ShowToast of string * ToastType
