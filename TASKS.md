@@ -2909,4 +2909,1115 @@ GPUInfo.printGPUInfo()
 
 **Actual Time for Phase 14**: ~1.5 hours (faster than estimated due to minimal code changes)
 
-**Next Task**: Continue with Phase 13 (Task 13.3 - Category Accordion UI Component)
+**Next Task**: Phase 15 - External Keyword Configuration File
+
+---
+
+### Phase 15: External Keyword Configuration File ⬜
+
+**Context**: Currently, keyword replacements and categories are stored in `settings.json` alongside other application settings. This phase enables users to store keywords in a separate, configurable file location. This allows sharing keywords across multiple computers via cloud storage (Google Drive, OneDrive, Dropbox, etc.) while keeping machine-specific settings local.
+
+**Goals**:
+- Move keyword data to a separate external file
+- Make the external file path configurable in general settings
+- Support cloud storage paths (Google Drive, OneDrive, etc.)
+- Maintain backward compatibility with existing settings.json
+- Enable real-time file watching for multi-computer sync
+- Keep local settings (hotkey, model, typing speed) separate from shared keywords
+
+**Architecture**:
+```
+settings.json (local, machine-specific):
+  - HotkeyKey
+  - HotkeyModifiers
+  - ModelSize
+  - RecordingDuration
+  - TypingSpeed
+  - IsEnabled
+  - KeywordsFilePath (NEW - path to external keywords file)
+
+keywords.json (external, shareable):
+  - KeywordReplacements: KeywordReplacement list
+  - Categories: KeywordCategory list
+```
+
+**Default Behavior**:
+- If `KeywordsFilePath` is not set: use local file `%APPDATA%/VocalFold/keywords.json`
+- If `KeywordsFilePath` is set: use specified path (e.g., `C:\Users\...\Google Drive\VocalFold\keywords.json`)
+
+---
+
+**Task 15.1: Backend - Split Settings Data Model**
+
+Separate keyword-related data from general application settings:
+
+**Changes to Settings.fs**:
+```fsharp
+// NEW: Separate type for keyword data (will be stored in external file)
+type KeywordData = {
+    KeywordReplacements: KeywordReplacement list
+    Categories: KeywordCategory list
+    Version: string  // For future schema migrations
+}
+
+// UPDATED: AppSettings no longer contains keyword data
+type AppSettings = {
+    HotkeyKey: uint32
+    HotkeyModifiers: uint32
+    IsEnabled: bool
+    ModelSize: string
+    RecordingDuration: int
+    TypingSpeed: string
+    KeywordsFilePath: string option  // NEW: Path to external keywords file
+    // KeywordReplacements: REMOVED (moved to KeywordData)
+    // Categories: REMOVED (moved to KeywordData)
+}
+
+// Default keywords file location
+let getDefaultKeywordsPath() =
+    let appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+    Path.Combine(appDataPath, "VocalFold", "keywords.json")
+
+// Load keyword data from external file
+let loadKeywordData (filePath: string) : KeywordData =
+    if File.Exists(filePath) then
+        let json = File.ReadAllText(filePath)
+        JsonSerializer.Deserialize<KeywordData>(json)
+    else
+        // Return default keyword data
+        {
+            KeywordReplacements = []
+            Categories = [
+                { Name = "Uncategorized"; IsExpanded = true; Color = None }
+                { Name = "Punctuation"; IsExpanded = true; Color = Some "#25abfe" }
+                { Name = "Email Templates"; IsExpanded = true; Color = Some "#ff8b00" }
+                { Name = "Code Snippets"; IsExpanded = false; Color = Some "#10b981" }
+            ]
+            Version = "1.0"
+        }
+
+// Save keyword data to external file
+let saveKeywordData (filePath: string) (data: KeywordData) : unit =
+    let directory = Path.GetDirectoryName(filePath)
+    if not (Directory.Exists(directory)) then
+        Directory.CreateDirectory(directory) |> ignore
+
+    let json = JsonSerializer.Serialize(data, JsonSerializerOptions(WriteIndented = true))
+    File.WriteAllText(filePath, json)
+
+// Get the active keywords file path (from settings or default)
+let getKeywordsFilePath (settings: AppSettings) : string =
+    match settings.KeywordsFilePath with
+    | Some path when not (String.IsNullOrWhiteSpace(path)) -> path
+    | _ -> getDefaultKeywordsPath()
+```
+
+**Migration Logic** (for existing users):
+```fsharp
+// Migrate old settings.json to new split structure
+let migrateToExternalKeywords (settings: AppSettings) : AppSettings * KeywordData =
+    // Check if settings contain old keyword data (backward compatibility)
+    match settings with
+    | { KeywordReplacements = replacements; Categories = categories } when replacements <> [] || categories <> [] ->
+        // Extract keyword data
+        let keywordData = {
+            KeywordReplacements = replacements
+            Categories = categories
+            Version = "1.0"
+        }
+
+        // Save to external file
+        let keywordsPath = getDefaultKeywordsPath()
+        saveKeywordData keywordsPath keywordData
+
+        // Update settings to remove keyword data and add file path
+        let newSettings = {
+            settings with
+                KeywordsFilePath = Some keywordsPath
+                // Remove old fields (handled by type change)
+        }
+
+        (newSettings, keywordData)
+    | _ ->
+        // No migration needed
+        let keywordsPath = getKeywordsFilePath settings
+        let keywordData = loadKeywordData keywordsPath
+        (settings, keywordData)
+```
+
+**Acceptance**:
+- KeywordData type defined with replacements and categories
+- AppSettings no longer contains keyword data
+- Load/save functions for external keywords file
+- Migration logic preserves existing keyword data
+- Default path uses %APPDATA%/VocalFold/keywords.json
+
+---
+
+**Task 15.2: Backend - Settings API Updates**
+
+Update REST API to handle split settings structure:
+
+**Changes to SettingsApi.fs**:
+```fsharp
+// NEW: Global state for keyword data (in-memory cache)
+let mutable cachedKeywordData: KeywordData option = None
+let mutable keywordsFilePath: string = ""
+
+// Update initialization to load keyword data separately
+let initializeSettings() =
+    let settings = Settings.loadSettings()
+    let (migratedSettings, keywordData) = Settings.migrateToExternalKeywords settings
+
+    keywordsFilePath <- Settings.getKeywordsFilePath migratedSettings
+    cachedKeywordData <- Some keywordData
+
+    // Save migrated settings if changed
+    if settings <> migratedSettings then
+        Settings.saveSettings migratedSettings
+
+    migratedSettings
+
+// Update GET /api/settings to include keywords file path info
+let getSettings: HttpHandler =
+    fun next ctx ->
+        let settings = loadCurrentSettings()
+        let response = {|
+            Settings = settings
+            KeywordsFilePath = Settings.getKeywordsFilePath settings
+            KeywordsFileExists = File.Exists(Settings.getKeywordsFilePath settings)
+        |}
+        json response next ctx
+
+// NEW: Endpoint to update keywords file path
+// PUT /api/settings/keywords-path
+let updateKeywordsPath: HttpHandler =
+    fun next ctx -> task {
+        let! request = ctx.BindJsonAsync<{| Path: string |}>()
+
+        // Validate path
+        if String.IsNullOrWhiteSpace(request.Path) then
+            return! RequestErrors.BAD_REQUEST "Path cannot be empty" next ctx
+        else
+            let directory = Path.GetDirectoryName(request.Path)
+            if not (Directory.Exists(directory)) then
+                return! RequestErrors.BAD_REQUEST "Directory does not exist" next ctx
+            else
+                // Load current settings
+                let settings = loadCurrentSettings()
+
+                // Update path
+                let newSettings = { settings with KeywordsFilePath = Some request.Path }
+                Settings.saveSettings newSettings
+
+                // Load keywords from new path (or create if doesn't exist)
+                let keywordData = Settings.loadKeywordData request.Path
+                cachedKeywordData <- Some keywordData
+                keywordsFilePath <- request.Path
+
+                return! Successful.OK {| Success = true; Path = request.Path |} next ctx
+    }
+
+// NEW: Endpoint to export current keywords to a new location
+// POST /api/keywords/export-to-file
+let exportKeywordsToFile: HttpHandler =
+    fun next ctx -> task {
+        let! request = ctx.BindJsonAsync<{| Path: string; SetAsActive: bool |}>()
+
+        match cachedKeywordData with
+        | Some keywordData ->
+            // Save to specified path
+            Settings.saveKeywordData request.Path keywordData
+
+            // Optionally set as active keywords file
+            if request.SetAsActive then
+                let settings = loadCurrentSettings()
+                let newSettings = { settings with KeywordsFilePath = Some request.Path }
+                Settings.saveSettings newSettings
+                keywordsFilePath <- request.Path
+
+            return! Successful.OK {| Success = true; Path = request.Path |} next ctx
+        | None ->
+            return! RequestErrors.BAD_REQUEST "No keyword data loaded" next ctx
+    }
+
+// Update routes
+let keywordRoutes: HttpHandler =
+    choose [
+        // ... existing routes ...
+        PUT >=> route "/api/settings/keywords-path" >=> updateKeywordsPath
+        POST >=> route "/api/keywords/export-to-file" >=> exportKeywordsToFile
+    ]
+```
+
+**Changes to KeywordsApi.fs**:
+```fsharp
+// Update all keyword CRUD operations to save to external file
+let saveKeywordChanges() =
+    match cachedKeywordData with
+    | Some data ->
+        Settings.saveKeywordData keywordsFilePath data
+        // Notify app of changes (existing callback mechanism)
+    | None -> ()
+
+// Update GET /api/keywords to return from cached data
+let getKeywords: HttpHandler =
+    fun next ctx ->
+        match cachedKeywordData with
+        | Some data -> json data.KeywordReplacements next ctx
+        | None -> json [] next ctx
+
+// Update POST /api/keywords to save to external file
+let addKeyword: HttpHandler =
+    fun next ctx -> task {
+        let! newKeyword = ctx.BindJsonAsync<KeywordReplacement>()
+
+        match cachedKeywordData with
+        | Some data ->
+            let updatedData = {
+                data with
+                    KeywordReplacements = data.KeywordReplacements @ [newKeyword]
+            }
+            cachedKeywordData <- Some updatedData
+            saveKeywordChanges()
+            return! Successful.OK {| Success = true |} next ctx
+        | None ->
+            return! RequestErrors.BAD_REQUEST "Keyword data not loaded" next ctx
+    }
+
+// Similar updates for PUT and DELETE operations
+```
+
+**Acceptance**:
+- API loads keywords from external file
+- API saves keyword changes to external file
+- Can update keywords file path via API
+- Can export keywords to a new location
+- All keyword operations work with split structure
+
+---
+
+**Task 15.3: Backend - File Watching & Auto-Reload**
+
+Implement file watching to detect external changes to keywords file (e.g., synced from another computer):
+
+**Create FileWatcher.fs**:
+```fsharp
+module FileWatcher
+
+open System
+open System.IO
+
+type FileChangeCallback = unit -> unit
+
+let createWatcher (filePath: string) (callback: FileChangeCallback) : FileSystemWatcher =
+    let directory = Path.GetDirectoryName(filePath)
+    let fileName = Path.GetFileName(filePath)
+
+    let watcher = new FileSystemWatcher()
+    watcher.Path <- directory
+    watcher.Filter <- fileName
+    watcher.NotifyFilter <- NotifyFilters.LastWrite ||| NotifyFilters.FileName
+
+    // Debounce changes (avoid multiple events for single change)
+    let mutable lastEventTime = DateTime.MinValue
+    let debounceMs = 500.0
+
+    let onChanged (e: FileSystemEventArgs) =
+        let now = DateTime.Now
+        if (now - lastEventTime).TotalMilliseconds > debounceMs then
+            lastEventTime <- now
+            printfn "📄 Keywords file changed externally, reloading..."
+            callback()
+
+    watcher.Changed.Add(onChanged)
+    watcher.Created.Add(onChanged)
+    watcher.Deleted.Add(onChanged)
+
+    watcher.EnableRaisingEvents <- true
+    watcher
+
+let stopWatcher (watcher: FileSystemWatcher) =
+    watcher.EnableRaisingEvents <- false
+    watcher.Dispose()
+```
+
+**Integration in WebServer.fs**:
+```fsharp
+type ServerState = {
+    Port: int
+    CancellationToken: CancellationTokenSource
+    FileWatcher: FileSystemWatcher option  // NEW
+}
+
+let start (config: ServerConfig) : Async<ServerState> =
+    async {
+        // ... existing server startup ...
+
+        // Start file watcher for keywords file
+        let keywordsPath = Settings.getKeywordsFilePath (Settings.loadSettings())
+
+        let reloadCallback = fun () ->
+            // Reload keyword data from file
+            let keywordData = Settings.loadKeywordData keywordsPath
+            SettingsApi.cachedKeywordData <- Some keywordData
+
+            // Notify TextProcessor to reload keywords
+            config.OnKeywordsChanged keywordData
+
+        let watcher =
+            if File.Exists(keywordsPath) then
+                Some (FileWatcher.createWatcher keywordsPath reloadCallback)
+            else
+                None
+
+        return {
+            Port = port
+            CancellationToken = cts
+            FileWatcher = watcher
+        }
+    }
+
+let stop (state: ServerState) : Async<unit> =
+    async {
+        // Stop file watcher
+        match state.FileWatcher with
+        | Some watcher -> FileWatcher.stopWatcher watcher
+        | None -> ()
+
+        // ... existing shutdown logic ...
+    }
+```
+
+**Acceptance**:
+- File watcher detects changes to keywords file
+- Changes trigger automatic reload of keyword data
+- Debouncing prevents excessive reloads
+- File watcher stops cleanly on app shutdown
+- Works with cloud-synced folders
+
+---
+
+**Task 15.4: Frontend - Keywords File Path Configuration UI**
+
+Add UI to configure the external keywords file path:
+
+**Add to General Settings Page**:
+```tsx
+// In GeneralSettings.tsx (or GeneralSettings.fs for Fable)
+
+let KeywordsFilePathSection =
+    Html.div [
+        prop.className "bg-background-card rounded-lg p-6 space-y-4"
+        prop.children [
+            Html.h3 [
+                prop.className "text-lg font-semibold text-text-primary"
+                prop.text "Keywords Storage Location"
+            ]
+
+            Html.p [
+                prop.className "text-sm text-text-secondary"
+                prop.text "Configure where your keyword replacements are stored. Use a cloud folder (Google Drive, OneDrive) to share keywords across multiple computers."
+            ]
+
+            // Current path display
+            Html.div [
+                prop.className "space-y-2"
+                prop.children [
+                    Html.label [
+                        prop.className "text-sm font-medium text-text-primary"
+                        prop.text "Current Location:"
+                    ]
+                    Html.div [
+                        prop.className "flex items-center space-x-2"
+                        prop.children [
+                            Html.input [
+                                prop.type' "text"
+                                prop.readOnly true
+                                prop.value model.KeywordsFilePath
+                                prop.className "flex-1 px-3 py-2 bg-background-dark text-text-primary rounded border border-gray-700"
+                            ]
+                            Html.button [
+                                prop.className "px-4 py-2 bg-primary hover:bg-primary-600 text-white rounded transition"
+                                prop.text "Browse..."
+                                prop.onClick (fun _ -> dispatch OpenFilePathPicker)
+                            ]
+                        ]
+                    ]
+
+                    // File exists indicator
+                    if model.KeywordsFileExists then
+                        Html.div [
+                            prop.className "flex items-center text-sm text-green-500"
+                            prop.children [
+                                Html.span [ prop.text "✓ File exists" ]
+                            ]
+                        ]
+                    else
+                        Html.div [
+                            prop.className "flex items-center text-sm text-amber-500"
+                            prop.children [
+                                Html.span [ prop.text "⚠ File will be created" ]
+                            ]
+                        ]
+                ]
+            ]
+
+            // Quick setup buttons
+            Html.div [
+                prop.className "space-y-2"
+                prop.children [
+                    Html.p [
+                        prop.className "text-sm font-medium text-text-primary"
+                        prop.text "Quick Setup:"
+                    ]
+                    Html.div [
+                        prop.className "flex space-x-2"
+                        prop.children [
+                            Html.button [
+                                prop.className "px-4 py-2 bg-secondary hover:bg-secondary-600 text-white rounded transition"
+                                prop.text "📁 Use Local Folder"
+                                prop.onClick (fun _ -> dispatch UseDefaultPath)
+                            ]
+                            Html.button [
+                                prop.className "px-4 py-2 bg-secondary hover:bg-secondary-600 text-white rounded transition"
+                                prop.text "☁️ Use Google Drive"
+                                prop.onClick (fun _ -> dispatch UseGoogleDrivePath)
+                            ]
+                            Html.button [
+                                prop.className "px-4 py-2 bg-secondary hover:bg-secondary-600 text-white rounded transition"
+                                prop.text "☁️ Use OneDrive"
+                                prop.onClick (fun _ -> dispatch UseOneDrivePath)
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
+            // Info box
+            Html.div [
+                prop.className "bg-primary bg-opacity-10 border border-primary rounded p-4"
+                prop.children [
+                    Html.p [
+                        prop.className "text-sm text-text-primary"
+                        prop.children [
+                            Html.strong [ prop.text "💡 Tip: " ]
+                            Html.text "Set the path to a cloud-synced folder to automatically share your keywords across multiple computers. Any changes made on one computer will sync to others."
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+```
+
+**File Path Picker Modal**:
+```tsx
+let FilePathPickerModal =
+    Html.div [
+        prop.className "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        prop.onClick (fun e ->
+            if e.target = e.currentTarget then
+                dispatch CloseFilePathPicker)
+        prop.children [
+            Html.div [
+                prop.className "bg-background-card rounded-lg p-6 max-w-2xl w-full mx-4"
+                prop.children [
+                    Html.h3 [
+                        prop.className "text-xl font-semibold text-text-primary mb-4"
+                        prop.text "Choose Keywords File Location"
+                    ]
+
+                    Html.div [
+                        prop.className "space-y-3"
+                        prop.children [
+                            Html.input [
+                                prop.type' "text"
+                                prop.placeholder "Enter full path (e.g., C:\\Users\\...\\Google Drive\\VocalFold\\keywords.json)"
+                                prop.value model.NewKeywordsPath
+                                prop.onChange (fun (value: string) -> dispatch (UpdateNewKeywordsPath value))
+                                prop.className "w-full px-3 py-2 bg-background-dark text-text-primary rounded border border-gray-700"
+                            ]
+
+                            // Common cloud storage paths
+                            Html.div [
+                                prop.className "space-y-2"
+                                prop.children [
+                                    Html.p [
+                                        prop.className "text-sm text-text-secondary"
+                                        prop.text "Common locations:"
+                                    ]
+
+                                    CommonPathButton "Google Drive" (getGoogleDrivePath())
+                                    CommonPathButton "OneDrive" (getOneDrivePath())
+                                    CommonPathButton "Dropbox" (getDropboxPath())
+                                    CommonPathButton "Local AppData" (getDefaultKeywordsPath())
+                                ]
+                            ]
+                        ]
+                    ]
+
+                    Html.div [
+                        prop.className "flex justify-end space-x-3 mt-6"
+                        prop.children [
+                            Html.button [
+                                prop.className "px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition"
+                                prop.text "Cancel"
+                                prop.onClick (fun _ -> dispatch CloseFilePathPicker)
+                            ]
+                            Html.button [
+                                prop.className "px-4 py-2 bg-primary hover:bg-primary-600 text-white rounded transition"
+                                prop.text "Save & Switch"
+                                prop.onClick (fun _ -> dispatch SaveNewKeywordsPath)
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+```
+
+**Helper Functions**:
+```fsharp
+let getGoogleDrivePath() =
+    let userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    Path.Combine(userProfile, "Google Drive", "VocalFold", "keywords.json")
+
+let getOneDrivePath() =
+    let oneDrive = Environment.GetEnvironmentVariable("OneDrive")
+    if String.IsNullOrEmpty(oneDrive) then
+        let userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+        Path.Combine(userProfile, "OneDrive", "VocalFold", "keywords.json")
+    else
+        Path.Combine(oneDrive, "VocalFold", "keywords.json")
+
+let getDropboxPath() =
+    let userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    Path.Combine(userProfile, "Dropbox", "VocalFold", "keywords.json")
+```
+
+**Acceptance**:
+- UI displays current keywords file path
+- Can browse and change keywords file path
+- Quick setup buttons for common cloud storage paths
+- Path validation before saving
+- Visual indicator for file existence
+- Clear instructions and helpful tips
+
+---
+
+**Task 15.5: Frontend - Export & Import Keywords UI**
+
+Add UI to easily export keywords to a new location:
+
+**Add to Keywords Page**:
+```tsx
+// Add toolbar buttons to Keywords Manager
+
+let KeywordsToolbar =
+    Html.div [
+        prop.className "flex space-x-3 mb-4"
+        prop.children [
+            // Existing buttons
+            Html.button [ (* Add Keyword *) ]
+            Html.button [ (* Add Category *) ]
+
+            // NEW: Export/Import buttons
+            Html.button [
+                prop.className "px-4 py-2 bg-secondary hover:bg-secondary-600 text-white rounded transition"
+                prop.children [
+                    Html.span [ prop.text "📤 Export to File" ]
+                ]
+                prop.onClick (fun _ -> dispatch OpenExportModal)
+            ]
+
+            Html.button [
+                prop.className "px-4 py-2 bg-secondary hover:bg-secondary-600 text-white rounded transition"
+                prop.children [
+                    Html.span [ prop.text "📥 Import from File" ]
+                ]
+                prop.onClick (fun _ -> dispatch OpenImportModal)
+            ]
+
+            // Sync status indicator
+            if model.KeywordsFileSynced then
+                Html.div [
+                    prop.className "flex items-center text-sm text-green-500 ml-auto"
+                    prop.children [
+                        Html.span [ prop.text "☁️ Synced" ]
+                    ]
+                ]
+            else
+                Html.div [
+                    prop.className "flex items-center text-sm text-amber-500 ml-auto"
+                    prop.children [
+                        Html.span [ prop.text "🔄 Syncing..." ]
+                    ]
+                ]
+        ]
+    ]
+```
+
+**Export Modal**:
+```tsx
+let ExportKeywordsModal =
+    Html.div [
+        (* Modal overlay *)
+        prop.children [
+            Html.div [
+                prop.className "bg-background-card rounded-lg p-6 max-w-lg w-full mx-4"
+                prop.children [
+                    Html.h3 [
+                        prop.text "Export Keywords to File"
+                    ]
+
+                    Html.div [
+                        prop.className "space-y-4"
+                        prop.children [
+                            Html.input [
+                                prop.type' "text"
+                                prop.placeholder "Path to save keywords file"
+                                prop.value model.ExportPath
+                                prop.onChange (fun v -> dispatch (UpdateExportPath v))
+                            ]
+
+                            Html.div [
+                                prop.className "flex items-center space-x-2"
+                                prop.children [
+                                    Html.input [
+                                        prop.type' "checkbox"
+                                        prop.checked model.SetAsActiveFile
+                                        prop.onChange (fun _ -> dispatch ToggleSetAsActive)
+                                    ]
+                                    Html.label [
+                                        prop.text "Set as active keywords file after export"
+                                    ]
+                                ]
+                            ]
+
+                            Html.p [
+                                prop.className "text-sm text-text-secondary"
+                                prop.text "This will save all your keywords and categories to the specified file. Check the box above to also switch to using this file as your active keywords storage."
+                            ]
+                        ]
+                    ]
+
+                    Html.div [
+                        prop.className "flex justify-end space-x-3 mt-6"
+                        prop.children [
+                            Html.button [
+                                prop.text "Cancel"
+                                prop.onClick (fun _ -> dispatch CloseExportModal)
+                            ]
+                            Html.button [
+                                prop.className "bg-primary hover:bg-primary-600"
+                                prop.text "Export"
+                                prop.onClick (fun _ -> dispatch ExportKeywords)
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
+    ]
+```
+
+**Acceptance**:
+- Export button saves keywords to specified location
+- Option to set exported file as active keywords file
+- Import button loads keywords from external file
+- Clear UI for managing keyword file locations
+- Sync status indicator shows cloud sync state
+
+---
+
+**Task 15.6: Integration - Update TextProcessor to Use External Keywords**
+
+Ensure TextProcessor reloads keywords when external file changes:
+
+**Changes to TextProcessor.fs** (or wherever keyword replacement logic is):
+```fsharp
+module TextProcessor
+
+// Mutable reference to current keyword data (updated by file watcher)
+let mutable currentKeywordData: KeywordData option = None
+
+// Initialize with keyword data
+let initialize (keywordData: KeywordData) =
+    currentKeywordData <- Some keywordData
+    printfn "📝 Loaded %d keywords in %d categories"
+        keywordData.KeywordReplacements.Length
+        keywordData.Categories.Length
+
+// Reload keywords (called by file watcher callback)
+let reload (keywordData: KeywordData) =
+    currentKeywordData <- Some keywordData
+    printfn "🔄 Reloaded %d keywords from external file"
+        keywordData.KeywordReplacements.Length
+
+// Existing processTranscription function uses currentKeywordData
+let processTranscription (text: string) : string =
+    match currentKeywordData with
+    | Some data ->
+        // Apply keyword replacements
+        let mutable result = text
+        for keyword in data.KeywordReplacements do
+            // Replacement logic (existing code)
+            result <- (* ... *)
+        result
+    | None ->
+        printfn "⚠️ No keyword data loaded, returning original text"
+        text
+```
+
+**Integration in Program.fs**:
+```fsharp
+[<EntryPoint>]
+let main argv =
+    // Load settings and keywords
+    let settings = Settings.loadSettings()
+    let keywordsPath = Settings.getKeywordsFilePath settings
+    let keywordData = Settings.loadKeywordData keywordsPath
+
+    // Initialize TextProcessor with keywords
+    TextProcessor.initialize keywordData
+
+    // Set up file watcher callback to reload keywords
+    let onKeywordsChanged (newData: KeywordData) =
+        TextProcessor.reload newData
+        printfn "✅ Keywords updated from external file"
+
+    // Start web server with callback
+    let serverConfig = {
+        Port = 0  // Random port
+        OnSettingsChanged = handleSettingsChanged
+        OnKeywordsChanged = onKeywordsChanged  // NEW
+    }
+
+    // ... rest of startup logic ...
+```
+
+**Acceptance**:
+- TextProcessor uses keywords from external file
+- File watcher triggers keyword reload
+- Transcription uses updated keywords immediately
+- Console logging confirms keyword reloads
+- Multi-computer sync works in real-time
+
+---
+
+**Task 15.7: Testing - Cloud Storage Scenarios**
+
+Comprehensive testing of external keywords file with cloud storage:
+
+**Test Scenarios**:
+
+1. **Initial Setup**:
+   - [ ] Fresh install creates default keywords.json in AppData
+   - [ ] Can change path to Google Drive folder
+   - [ ] Keywords persist after path change
+   - [ ] Settings.json stores correct path
+
+2. **Multi-Computer Sync** (requires 2 computers with cloud storage):
+   - [ ] Computer A: Set keywords path to Google Drive
+   - [ ] Computer A: Add keyword "test" → "testing"
+   - [ ] Computer B: Set same keywords path
+   - [ ] Computer B: Keyword appears automatically
+   - [ ] Computer B: Modify keyword, Computer A sees change
+
+3. **Conflict Resolution**:
+   - [ ] Both computers modify keywords simultaneously
+   - [ ] Cloud storage resolves conflict (last-write-wins)
+   - [ ] File watcher detects final state
+   - [ ] No data corruption or crashes
+
+4. **Edge Cases**:
+   - [ ] Keywords file deleted externally → recreated with defaults
+   - [ ] Path set to non-existent directory → validation error
+   - [ ] Path set to read-only location → error on save
+   - [ ] Cloud storage offline → uses last cached version
+   - [ ] Very large keywords file (1000+ keywords) → performance acceptable
+
+5. **Migration**:
+   - [ ] Existing settings.json with keywords → migrates to external file
+   - [ ] Keywords and categories preserved
+   - [ ] Settings.json updated with file path
+   - [ ] No data loss
+
+6. **Backward Compatibility**:
+   - [ ] Old settings.json (pre-Phase 15) loads correctly
+   - [ ] Keywords automatically migrated
+   - [ ] App continues to function normally
+
+**Performance Testing**:
+- [ ] File watcher responds within 500ms of change
+- [ ] Keyword reload takes <100ms for 500 keywords
+- [ ] No memory leaks with repeated reloads
+- [ ] No excessive file I/O (debouncing works)
+
+**Acceptance**:
+- All test scenarios pass
+- Multi-computer sync works reliably
+- Edge cases handled gracefully
+- Performance is acceptable
+- No data loss in any scenario
+
+---
+
+**Task 15.8: Documentation & User Guide**
+
+Document the external keywords file feature:
+
+**Update USER_GUIDE.md**:
+```markdown
+### Sharing Keywords Across Multiple Computers
+
+VocalFold allows you to store your keyword replacements in a cloud-synced folder (Google Drive, OneDrive, Dropbox) so that all your computers use the same keywords automatically.
+
+#### Setting Up Cloud-Synced Keywords
+
+1. **Open Settings**
+   - Click on Settings in the tray menu
+   - Navigate to "General Settings"
+
+2. **Configure Keywords Location**
+   - Find the "Keywords Storage Location" section
+   - Click "Browse..." to choose a location
+   - Or use a quick setup button:
+     - "☁️ Use Google Drive" - Automatically finds your Google Drive folder
+     - "☁️ Use OneDrive" - Automatically finds your OneDrive folder
+     - "📁 Use Local Folder" - Uses default local storage
+
+3. **Recommended Path Structure**
+   ```
+   Google Drive/VocalFold/keywords.json
+   OneDrive/VocalFold/keywords.json
+   Dropbox/VocalFold/keywords.json
+   ```
+
+4. **Apply Changes**
+   - Click "Save"
+   - Your current keywords will be exported to the new location
+   - VocalFold will now watch this file for changes
+
+#### Using on Multiple Computers
+
+1. **First Computer**:
+   - Set keywords path to cloud folder (e.g., Google Drive)
+   - Configure your keywords as usual
+   - Keywords are automatically saved to cloud
+
+2. **Second Computer**:
+   - Install VocalFold
+   - Open Settings → General Settings
+   - Set keywords path to the **same cloud folder**
+   - VocalFold will load your keywords automatically
+
+3. **Automatic Syncing**:
+   - Changes made on any computer sync automatically
+   - VocalFold detects external changes and reloads keywords
+   - Sync status shown in Keywords Manager (☁️ Synced)
+
+#### Important Notes
+
+⚠️ **Cloud Storage Must Be Syncing**:
+- Ensure your cloud storage app (Google Drive, OneDrive) is running and syncing
+- Check that the VocalFold folder is not excluded from sync
+
+💡 **Local vs. Cloud Settings**:
+- General settings (hotkey, model, typing speed) remain local to each computer
+- Only keywords and categories are shared via the external file
+
+🔄 **Conflict Resolution**:
+- If both computers modify keywords simultaneously, the last saved version wins
+- This is handled by your cloud storage provider
+- VocalFold automatically reloads the latest version
+
+#### Exporting Keywords to a New Location
+
+1. Go to Keywords Manager
+2. Click "📤 Export to File"
+3. Enter the destination path
+4. Check "Set as active keywords file after export" to switch to the new location
+5. Click "Export"
+
+#### Troubleshooting
+
+**Keywords not syncing between computers:**
+- Verify both computers point to the exact same file path
+- Check that cloud storage is actively syncing
+- Ensure file is not locked by another application
+
+**Changes not appearing:**
+- Wait a few seconds for cloud sync to complete
+- Check the sync status indicator (☁️ icon)
+- Manually refresh by reopening the Keywords Manager
+
+**File not found error:**
+- Verify the cloud storage folder exists
+- Check that cloud storage app is running
+- Use the "Browse..." button to reselect the file
+```
+
+**Update ARCHITECTURE.md**:
+```markdown
+### External Keywords Configuration (Phase 15)
+
+**Purpose**: Enable sharing of keyword replacements across multiple computers via cloud storage while keeping machine-specific settings local.
+
+**Data Split**:
+- **settings.json** (local): Machine-specific settings (hotkey, model, typing speed)
+- **keywords.json** (external): Shareable keyword data (replacements, categories)
+
+**File Locations**:
+- Default: `%APPDATA%/VocalFold/keywords.json`
+- Cloud storage: Configurable path (e.g., `C:/Users/.../Google Drive/VocalFold/keywords.json`)
+
+**File Watching**:
+- FileSystemWatcher monitors external keywords file
+- Automatic reload on external changes (500ms debounce)
+- Enables real-time multi-computer synchronization
+
+**API Endpoints**:
+- `PUT /api/settings/keywords-path` - Update keywords file path
+- `POST /api/keywords/export-to-file` - Export keywords to new location
+- All keyword CRUD operations save to external file
+
+**Migration**:
+- Existing settings.json with embedded keywords automatically migrated
+- Keywords moved to external file on first run of Phase 15
+- Backward compatible with pre-Phase-15 settings
+```
+
+**Update README.md** (Features section):
+```markdown
+### Features
+
+- 🎤 **Voice-to-Text Transcription**: Press Ctrl+Windows and speak
+- 🖥️ **System-Wide Operation**: Works in any Windows application
+- 🎯 **GPU Acceleration**: NVIDIA CUDA, AMD/Intel Vulkan, or CPU fallback
+- ⚡ **Fast Processing**: <1s transcription for 5s of speech
+- 🔤 **Custom Keywords**: Replace spoken words with text (e.g., "comma" → ",")
+- 📁 **Keyword Organization**: Group keywords into collapsible categories
+- ☁️ **Cloud Sync**: Share keywords across multiple computers via Google Drive, OneDrive, etc. (NEW)
+- 🌐 **Modern Web UI**: Beautiful settings interface with real-time updates
+- 🔄 **Auto-Start**: Launches with Windows
+- 🎨 **Brand Colors**: Blue (#25abfe) and Orange (#ff8b00) theme
+```
+
+**Acceptance**:
+- User guide explains cloud sync setup clearly
+- Architecture documentation updated
+- README highlights the feature
+- Troubleshooting guidance included
+- Examples and screenshots (optional)
+
+---
+
+**Task 15.9: Polish & Final Integration**
+
+Final polish and integration testing:
+
+**Polish Checklist**:
+- [ ] All UI text is clear and helpful
+- [ ] Error messages are actionable
+- [ ] Console logging for all file operations
+- [ ] Toasts confirm file path changes
+- [ ] Sync status indicator updates in real-time
+- [ ] Animations smooth during path changes
+- [ ] Validation prevents invalid paths
+- [ ] File path shown with ellipsis if too long (tooltip shows full path)
+
+**Integration Testing**:
+- [ ] Keywords file path persists across restarts
+- [ ] TextProcessor uses keywords from external file
+- [ ] File watcher triggers reload correctly
+- [ ] Web UI reflects current keywords file path
+- [ ] All keyword CRUD operations save to external file
+- [ ] Migration from old settings works seamlessly
+- [ ] Export/import maintains data integrity
+- [ ] Cloud sync works with Google Drive, OneDrive, Dropbox
+
+**Security & Reliability**:
+- [ ] Path validation prevents directory traversal
+- [ ] File permissions checked before writing
+- [ ] File I/O errors handled gracefully
+- [ ] Concurrent access from multiple instances handled
+- [ ] File locking respected (don't corrupt during sync)
+
+**Performance**:
+- [ ] File watcher overhead minimal (<1% CPU)
+- [ ] Keyword reload fast (<100ms)
+- [ ] No memory leaks with repeated reloads
+- [ ] Large keywords files (1000+ keywords) handled efficiently
+
+**Acceptance**:
+- Feature is production-ready
+- All integration tests pass
+- No regressions in existing features
+- Cloud sync works reliably
+- User experience is smooth and intuitive
+
+---
+
+## Phase 15 Summary
+
+**What We Built**:
+- External keywords configuration file (keywords.json)
+- Configurable file path in general settings
+- Cloud storage support (Google Drive, OneDrive, Dropbox)
+- Real-time file watching for multi-computer sync
+- Export/import keywords to different locations
+- Migration from embedded keywords to external file
+- Web UI for managing keywords file location
+
+**Key Features**:
+✅ Keywords stored in separate external file
+✅ Configurable file path (local or cloud storage)
+✅ Real-time file watching and auto-reload
+✅ Multi-computer synchronization via cloud storage
+✅ Export keywords to new location
+✅ Quick setup buttons for common cloud providers
+✅ Backward compatible with existing settings
+✅ Migration preserves all keyword data
+
+**Architecture Changes**:
+- Split AppSettings into AppSettings (local) and KeywordData (external)
+- settings.json contains only machine-specific settings
+- keywords.json contains shareable keyword data
+- FileSystemWatcher monitors external file for changes
+- TextProcessor reloads keywords on external changes
+
+**Benefits**:
+- Share keywords across multiple computers automatically
+- Machine-specific settings (hotkey, model) remain local
+- Real-time sync via cloud storage providers
+- Easy backup and restore of keywords
+- Better organization of configuration data
+- Enables team sharing (multiple users, same keywords)
+
+**Use Cases**:
+- User with desktop and laptop wants same keywords on both
+- Team wants to share company-specific keywords
+- User wants to back up keywords separately from app settings
+- User switches computers frequently (cloud-synced keywords follow)
+
+**Technology**:
+- Backend: F#, FileSystemWatcher, JSON serialization
+- Frontend: F#, Fable, React, TailwindCSS
+- Storage: Separate JSON files (settings.json, keywords.json)
+- Sync: Cloud storage providers (Google Drive, OneDrive, Dropbox)
+
+**Tradeoffs**:
+- Slightly more complex settings management
+- Requires cloud storage app for multi-computer sync
+- File watching adds minimal CPU overhead
+- Cloud sync depends on external provider reliability
+
+---
+
+**Status**: Phase 15 specification complete, ready for implementation
+**Estimated Time**: 8-12 hours (includes backend, frontend, testing, documentation)
+
+**Next Task**: Implement Phase 15 (Task 15.1 - Backend - Split Settings Data Model)
