@@ -547,6 +547,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                 result <- Some {
                     Keyword = keywordTextBox.Text.Trim()
                     Replacement = replacementTextBox.Text
+                    Category = None
                 }
                 dlg.DialogResult <- DialogResult.OK
         )

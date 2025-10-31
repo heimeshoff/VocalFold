@@ -2039,9 +2039,6 @@ Update keyword add/edit modal to include category selection:
 │  Category:                              │
 │  [ Punctuation ▼               ]        │
 │                                         │
-│  ☑ Case Sensitive                      │
-│  ☑ Whole Phrase Only                   │
-│                                         │
 │         [Cancel]  [Save]                │
 └─────────────────────────────────────────┘
 ```

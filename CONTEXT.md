@@ -17,32 +17,40 @@ Windows desktop app that transcribes voice to text using Whisper.NET AI. Press C
 3. **TASKS.md** - Implementation roadmap
 
 ### Current Status
-**Phase**: Phase 12 - Web-based Settings UI (✅ COMPLETE)
-**Last Completed**: Task 12.20 - All Fable compilation errors fixed, frontend built successfully
-**Status**: Production-ready
+**Phase**: Phase 13 - Keyword Categorization (🚧 IN PROGRESS)
+**Last Completed**: Task 13.2 - Category Management REST API endpoints
+**Status**: Backend Complete, Frontend UI Pending
 
-**Phase 12 Progress**: 20 of 20 tasks completed (100%)
-- ✅ **Backend COMPLETE & WORKING**:
+**Phase 13 Progress**: 2 of 13 tasks completed (~40% - Backend + State done, UI remaining)
+- ✅ **Phase 12 Backend COMPLETE**:
   - Giraffe web server with full REST API
   - All endpoints functional: GET/PUT /api/settings, GET/POST/PUT/DELETE /api/keywords
   - Integration with main app complete (Program.fs:207)
   - Browser launch working, real-time sync working
 
-- ✅ **Frontend COMPLETE & COMPILED**:
+- ✅ **Phase 12 Frontend COMPLETE**:
   - All UI components: Dashboard, GeneralSettings, KeywordManager, Card, Button
   - TailwindCSS theme with brand colors configured
   - Elmish MVU architecture fully implemented
-  - Fable compilation successful (dist/assets/index-CMe8g0fY.js)
-  - Vite build successful: Production bundle ready
+  - Fable compilation successful, Vite build ready
 
-**What Was Fixed**:
-- API client: Rewrote from `promise {}` to `async {}` with `Async.StartAsPromise`
-- String interpolation: Replaced all `$""` with `sprintf` throughout all components
-- Type inference: Added explicit type annotations to resolve ambiguities
-- LoadingState/ToastType collisions: Added fully qualified names throughout
-- CSS import: Moved from F# Emit to HTML link tag
+- ✅ **Phase 13 Backend COMPLETE**:
+  - KeywordCategory type with Name, IsExpanded, Color fields
+  - Updated KeywordReplacement with optional Category field
+  - Categories list added to AppSettings with migration support
+  - Default categories: Uncategorized, Punctuation, Email Templates, Code Snippets
+  - Full REST API for categories: GET/POST/PUT/DELETE /api/categories
+  - Category operations: create, update, delete, toggle state, move keywords
+  - Frontend state management: EditingCategory, ExpandedCategories added to Model
+  - All category messages and handlers implemented
 
-**Build Output**: `VocalFold.WebUI/dist/` (ready for deployment)
+- 🚧 **Phase 13 Frontend UI PENDING**:
+  - Category Accordion UI (Task 13.3)
+  - Category Management Modal (Task 13.4)
+  - Keyword Modal with Category Dropdown (Task 13.5)
+  - Drag-and-Drop, Search, Statistics, etc. (Tasks 13.6-13.13)
+
+**Build Output**: `VocalFold.WebUI/dist/` (needs rebuild after Phase 13 UI completion)
 
 ### Important Constraints
 

@@ -10,16 +10,32 @@ open Types
 // JSON Encoders/Decoders
 // ============================================================================
 
+let keywordCategoryDecoder: Decoder<KeywordCategory> =
+    Decode.object (fun get -> {
+        Name = get.Required.Field "name" Decode.string
+        IsExpanded = get.Required.Field "isExpanded" Decode.bool
+        Color = get.Optional.Field "color" Decode.string
+    })
+
+let keywordCategoryEncoder (kc: KeywordCategory) =
+    Encode.object [
+        "name", Encode.string kc.Name
+        "isExpanded", Encode.bool kc.IsExpanded
+        "color", (match kc.Color with | Some c -> Encode.string c | None -> Encode.nil)
+    ]
+
 let keywordReplacementDecoder: Decoder<KeywordReplacement> =
     Decode.object (fun get -> {
         Keyword = get.Required.Field "keyword" Decode.string
         Replacement = get.Required.Field "replacement" Decode.string
+        Category = get.Optional.Field "category" Decode.string
     })
 
 let keywordReplacementEncoder (kr: KeywordReplacement) =
     Encode.object [
         "keyword", Encode.string kr.Keyword
         "replacement", Encode.string kr.Replacement
+        "category", (match kr.Category with | Some c -> Encode.string c | None -> Encode.nil)
     ]
 
 let appSettingsDecoder: Decoder<AppSettings> =
@@ -28,9 +44,10 @@ let appSettingsDecoder: Decoder<AppSettings> =
         HotkeyModifiers = get.Required.Field "hotkeyModifiers" Decode.uint32
         ModelSize = get.Required.Field "modelSize" Decode.string
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
-        TypingSpeed = get.Required.Field "typingSpeedStr" Decode.string
+        TypingSpeed = get.Required.Field "typingSpeed" Decode.string
         StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
         KeywordReplacements = get.Required.Field "keywordReplacements" (Decode.list keywordReplacementDecoder)
+        Categories = get.Optional.Field "categories" (Decode.list keywordCategoryDecoder) |> Option.defaultValue []
     })
 
 let appSettingsEncoder (settings: AppSettings) =
@@ -39,9 +56,10 @@ let appSettingsEncoder (settings: AppSettings) =
         "hotkeyModifiers", Encode.uint32 settings.HotkeyModifiers
         "modelSize", Encode.string settings.ModelSize
         "recordingDuration", Encode.int settings.RecordingDuration
-        "typingSpeedStr", Encode.string settings.TypingSpeed
+        "typingSpeed", Encode.string settings.TypingSpeed
         "startWithWindows", Encode.bool settings.StartWithWindows
         "keywordReplacements", Encode.list (List.map keywordReplacementEncoder settings.KeywordReplacements)
+        "categories", Encode.list (List.map keywordCategoryEncoder settings.Categories)
     ]
 
 let appStatusDecoder: Decoder<AppStatus> =
@@ -203,4 +221,115 @@ let addExampleKeywords () : JS.Promise<Result<int, string>> =
                 return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
         with ex ->
             return Result.Error (sprintf "Failed to add example keywords: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+// ============================================================================
+// Category API Functions
+// ============================================================================
+
+/// Move a keyword to a different category
+let moveKeywordToCategory (index: int) (category: string option) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let categoryValue = match category with | Some c -> Encode.string c | None -> Encode.nil
+            let json = Encode.toString 0 (Encode.object [ "category", categoryValue ])
+            let! response =
+                Http.request (baseUrl + sprintf "/api/keywords/%d/category" index)
+                |> Http.method PUT
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to move keyword: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Get all categories
+let getCategories () : JS.Promise<Result<KeywordCategory list, string>> =
+    async {
+        try
+            let! response = Http.request (baseUrl + "/api/categories") |> Http.method GET |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString (Decode.list keywordCategoryDecoder) response.responseText with
+                | Result.Ok categories -> return Result.Ok categories
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to get categories: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Create a new category
+let createCategory (category: KeywordCategory) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let json = Encode.toString 0 (keywordCategoryEncoder category)
+            let! response =
+                Http.request (baseUrl + "/api/categories")
+                |> Http.method POST
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to create category: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Update a category
+let updateCategory (name: string) (category: KeywordCategory) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let json = Encode.toString 0 (keywordCategoryEncoder category)
+            let! response =
+                Http.request (baseUrl + sprintf "/api/categories/%s" name)
+                |> Http.method PUT
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to update category: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Delete a category
+let deleteCategory (name: string) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let! response =
+                Http.request (baseUrl + sprintf "/api/categories/%s" name)
+                |> Http.method DELETE
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to delete category: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Toggle category expanded state
+let toggleCategoryState (name: string) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let! response =
+                Http.request (baseUrl + sprintf "/api/categories/%s/state" name)
+                |> Http.method PUT
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to toggle category state: %s" ex.Message)
     } |> Async.StartAsPromise

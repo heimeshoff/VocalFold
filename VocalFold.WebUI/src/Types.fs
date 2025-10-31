@@ -4,9 +4,16 @@ module Types
 // Domain Types (matching backend)
 // ============================================================================
 
+type KeywordCategory = {
+    Name: string
+    IsExpanded: bool
+    Color: string option
+}
+
 type KeywordReplacement = {
     Keyword: string
     Replacement: string
+    Category: string option
 }
 
 type AppSettings = {
@@ -17,6 +24,7 @@ type AppSettings = {
     TypingSpeed: string
     StartWithWindows: bool
     KeywordReplacements: KeywordReplacement list
+    Categories: KeywordCategory list
 }
 
 type AppStatus = {
@@ -58,6 +66,8 @@ type Model = {
     IsRecordingHotkey: bool
     PendingHotkey: (uint32 * uint32) option  // (modifiers, key)
     EditingKeyword: (int * KeywordReplacement) option
+    EditingCategory: KeywordCategory option  // Category being created/edited
+    ExpandedCategories: Set<string>  // Set of expanded category names
     Toasts: Toast list
 }
 
@@ -95,6 +105,15 @@ type Msg =
     | CancelEditKeyword
     | AddExampleKeywords
     | ExampleKeywordsAdded of Result<int, string>
+    | MoveKeywordToCategory of int * string option
+
+    // Categories
+    | ToggleCategory of string
+    | AddCategory
+    | EditCategory of string
+    | SaveCategory of KeywordCategory
+    | DeleteCategory of string
+    | CancelEditCategory
 
     // UI
     | ShowToast of string * ToastType

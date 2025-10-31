@@ -1,5 +1,8 @@
 module Components.SystemSettings
 
+// Suppress deprecation warning for keyCode usage - required for Windows hotkey system
+#nowarn "44"
+
 open Feliz
 open Browser.Types
 open Types
@@ -65,7 +68,7 @@ let formatHotkey (modifiers: uint32) (key: uint32) =
 // ============================================================================
 
 [<ReactComponent>]
-let private systemSettingsCard (isRecording: bool) (currentKey: uint32) (currentModifiers: uint32) (pendingHotkey: (uint32 * uint32) option) (currentModel: string) (dispatch: Msg -> unit) (settings: AppSettings) =
+let private SystemSettingsCard (isRecording: bool) (currentKey: uint32) (currentModifiers: uint32) (pendingHotkey: (uint32 * uint32) option) (currentModel: string) (dispatch: Msg -> unit) (settings: AppSettings) =
     let onKeyDown (e: KeyboardEvent) =
         if isRecording then
             e.preventDefault()
@@ -284,7 +287,7 @@ let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (pendin
 
             match settings with
             | LoadingState.Loaded s ->
-                systemSettingsCard isRecordingHotkey s.HotkeyKey s.HotkeyModifiers pendingHotkey s.ModelSize dispatch s
+                SystemSettingsCard isRecordingHotkey s.HotkeyKey s.HotkeyModifiers pendingHotkey s.ModelSize dispatch s
             | LoadingState.Loading ->
                 Html.div [
                     prop.className "flex items-center justify-center py-12"

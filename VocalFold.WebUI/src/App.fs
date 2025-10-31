@@ -19,6 +19,8 @@ let init () =
         IsRecordingHotkey = false
         PendingHotkey = None
         EditingKeyword = None
+        EditingCategory = None
+        ExpandedCategories = Set.empty
         Toasts = []
     }
     // Load initial data
@@ -112,7 +114,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with IsRecordingHotkey = false; PendingHotkey = None }, Cmd.none
 
     | AddKeyword ->
-        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = "" }) }, Cmd.none
+        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = ""; Category = None }) }, Cmd.none
 
     | EditKeyword index ->
         match model.Settings with
@@ -183,9 +185,57 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
     | DismissToast id ->
         { model with Toasts = model.Toasts |> List.filter (fun t -> t.Id <> id) }, Cmd.none
 
-    | _ ->
-        // Placeholder for other messages
+    | LoadKeywords ->
+        model, Cmd.ofMsg LoadSettings
+
+    | KeywordsLoaded _ ->
         model, Cmd.none
+
+    | MoveKeywordToCategory (index, category) ->
+        model,
+        Cmd.OfPromise.either
+            (Api.moveKeywordToCategory index)
+            category
+            (fun _ -> SettingsSaved (Result.Ok ()))
+            (fun ex -> SettingsSaved (Result.Error ex.Message))
+
+    | ToggleCategory name ->
+        let expandedCategories =
+            if model.ExpandedCategories.Contains name then
+                model.ExpandedCategories.Remove name
+            else
+                model.ExpandedCategories.Add name
+        { model with ExpandedCategories = expandedCategories }, Cmd.none
+
+    | AddCategory ->
+        { model with EditingCategory = Some { Name = ""; IsExpanded = true; Color = None } }, Cmd.none
+
+    | EditCategory name ->
+        match model.Settings with
+        | LoadingState.Loaded settings ->
+            let category = settings.Categories |> List.tryFind (fun c -> c.Name = name)
+            { model with EditingCategory = category }, Cmd.none
+        | _ ->
+            model, Cmd.none
+
+    | SaveCategory category ->
+        model,
+        Cmd.OfPromise.either
+            Api.createCategory
+            category
+            (fun _ -> SettingsSaved (Result.Ok ()))
+            (fun ex -> SettingsSaved (Result.Error ex.Message))
+
+    | DeleteCategory name ->
+        model,
+        Cmd.OfPromise.either
+            Api.deleteCategory
+            name
+            (fun _ -> SettingsSaved (Result.Ok ()))
+            (fun ex -> SettingsSaved (Result.Error ex.Message))
+
+    | CancelEditCategory ->
+        { model with EditingCategory = None }, Cmd.none
 
 // ============================================================================
 // View
@@ -255,7 +305,7 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             | GeneralSettings ->
                                 Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | KeywordSettings ->
-                                Components.KeywordManager.view model.Settings model.EditingKeyword dispatch
+                                Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
                         ]
                     ]
                 ]
