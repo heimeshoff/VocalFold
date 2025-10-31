@@ -305,7 +305,7 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             | GeneralSettings ->
                                 Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | KeywordSettings ->
-                                Components.KeywordManager.view model.Settings model.EditingKeyword dispatch
+                                Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
                         ]
                     ]
                 ]

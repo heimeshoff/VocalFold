@@ -152,6 +152,8 @@ let private getSettingsFilePath () =
 let private jsonOptions =
     let options = JsonSerializerOptions()
     options.WriteIndented <- true
+    // Add F# converter to properly handle option types, lists, etc.
+    options.Converters.Add(JsonFSharpConverter(JsonUnionEncoding.Default))
     options
 
 /// Load settings from file, or return default settings if file doesn't exist
@@ -161,7 +163,25 @@ let load () : AppSettings =
     try
         if File.Exists(settingsPath) then
             let json = File.ReadAllText(settingsPath)
-            let settings = JsonSerializer.Deserialize<AppSettings>(json, jsonOptions)
+
+            // Try loading with the new format first (with F# converter)
+            let settings =
+                try
+                    JsonSerializer.Deserialize<AppSettings>(json, jsonOptions)
+                with
+                | :? JsonException as ex ->
+                    // If it fails, try loading with old format (without F# converter) for migration
+                    Logger.info "Settings file appears to be in old format, attempting migration..."
+                    let oldOptions = JsonSerializerOptions(WriteIndented = true)
+                    let migrated = JsonSerializer.Deserialize<AppSettings>(json, oldOptions)
+                    // Resave immediately with new format
+                    try
+                        let newJson = JsonSerializer.Serialize(migrated, jsonOptions)
+                        File.WriteAllText(settingsPath, newJson)
+                        Logger.info "Settings migrated to new format"
+                    with
+                    | ex -> Logger.warning (sprintf "Could not resave migrated settings: %s" ex.Message)
+                    migrated
 
             // Validate settings
             if settings.HotkeyKey = 0u then

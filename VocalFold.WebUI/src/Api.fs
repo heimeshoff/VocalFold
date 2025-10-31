@@ -44,7 +44,7 @@ let appSettingsDecoder: Decoder<AppSettings> =
         HotkeyModifiers = get.Required.Field "hotkeyModifiers" Decode.uint32
         ModelSize = get.Required.Field "modelSize" Decode.string
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
-        TypingSpeed = get.Required.Field "typingSpeedStr" Decode.string
+        TypingSpeed = get.Required.Field "typingSpeed" Decode.string
         StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
         KeywordReplacements = get.Required.Field "keywordReplacements" (Decode.list keywordReplacementDecoder)
         Categories = get.Optional.Field "categories" (Decode.list keywordCategoryDecoder) |> Option.defaultValue []
@@ -56,7 +56,7 @@ let appSettingsEncoder (settings: AppSettings) =
         "hotkeyModifiers", Encode.uint32 settings.HotkeyModifiers
         "modelSize", Encode.string settings.ModelSize
         "recordingDuration", Encode.int settings.RecordingDuration
-        "typingSpeedStr", Encode.string settings.TypingSpeed
+        "typingSpeed", Encode.string settings.TypingSpeed
         "startWithWindows", Encode.bool settings.StartWithWindows
         "keywordReplacements", Encode.list (List.map keywordReplacementEncoder settings.KeywordReplacements)
         "categories", Encode.list (List.map keywordCategoryEncoder settings.Categories)

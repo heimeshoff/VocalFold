@@ -3,6 +3,8 @@ module WebServer
 open System
 open System.Net
 open System.Net.Sockets
+open System.Text.Json
+open System.Text.Json.Serialization
 open System.Threading
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
@@ -367,6 +369,15 @@ let configureApp (config: ServerConfig) (app: IApplicationBuilder) =
     |> ignore
 
 let configureServices (services: IServiceCollection) =
+    // Configure JSON serialization with F# support
+    let jsonOptions = JsonSerializerOptions()
+    jsonOptions.PropertyNamingPolicy <- JsonNamingPolicy.CamelCase
+    jsonOptions.Converters.Add(System.Text.Json.Serialization.JsonFSharpConverter(System.Text.Json.Serialization.JsonUnionEncoding.Default))
+
+    services
+        .AddSingleton<Json.ISerializer>(SystemTextJson.Serializer(jsonOptions))
+    |> ignore
+
     services
         .AddGiraffe()
         .AddCors(fun options ->
