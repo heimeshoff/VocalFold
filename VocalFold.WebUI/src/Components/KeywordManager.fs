@@ -453,10 +453,13 @@ let private getKeywordsByCategory (keywords: KeywordReplacement list) (categoryN
     )
 
 // Category header component
-let private categoryHeader (category: KeywordCategory) (keywordCount: int) (isExpanded: bool) (dispatch: Msg -> unit) =
+let private categoryHeader (category: KeywordCategory) (keywordCount: int) (isExpanded: bool) (isDragOver: bool) (dispatch: Msg -> unit) (onDragOver: string -> Browser.Types.DragEvent -> unit) (onDragLeave: unit -> unit) (onDrop: string -> Browser.Types.DragEvent -> unit) =
     Html.div [
-        prop.className "bg-background-sidebar border border-white/10 rounded-lg p-4 hover:bg-white/5 transition-all cursor-pointer"
+        prop.className (sprintf "bg-background-sidebar border border-white/10 rounded-lg p-4 hover:bg-white/5 transition-all cursor-pointer %s" (if isDragOver then "ring-2 ring-primary bg-primary/10" else ""))
         prop.onClick (fun _ -> dispatch (ToggleCategory category.Name))
+        prop.onDragOver (fun e -> onDragOver category.Name e)
+        prop.onDragLeave (fun _ -> onDragLeave())
+        prop.onDrop (fun e -> onDrop category.Name e)
         prop.children [
             Html.div [
                 prop.className "flex items-center justify-between"
@@ -517,9 +520,16 @@ let private categoryHeader (category: KeywordCategory) (keywordCount: int) (isEx
     ]
 
 // Keyword row component
-let private keywordRow (index: int) (keyword: KeywordReplacement) (dispatch: Msg -> unit) (onEdit: int -> unit) =
+let private keywordRow (index: int) (keyword: KeywordReplacement) (isDragging: bool) (dispatch: Msg -> unit) (onEdit: int -> unit) (onDragStart: int -> unit) (onDragEnd: unit -> unit) =
     Html.div [
-        prop.className "border-t border-white/10 p-4 hover:bg-white/5 transition-colors"
+        prop.className (sprintf "border-t border-white/10 p-4 hover:bg-white/5 transition-colors cursor-move %s" (if isDragging then "opacity-50" else ""))
+        prop.draggable true
+        prop.onDragStart (fun e ->
+            e.dataTransfer.effectAllowed <- "move"
+            e.dataTransfer.setData("text/plain", string index) |> ignore
+            onDragStart index
+        )
+        prop.onDragEnd (fun _ -> onDragEnd())
         prop.children [
             Html.div [
                 prop.className "flex items-center justify-between"
@@ -577,7 +587,37 @@ let private keywordRow (index: int) (keyword: KeywordReplacement) (dispatch: Msg
     ]
 
 // Category accordion section
+[<ReactComponent>]
 let private categoryAccordion (categories: KeywordCategory list) (keywords: KeywordReplacement list) (expandedCategories: Set<string>) (dispatch: Msg -> unit) (onEdit: int -> unit) =
+    let draggingKeywordIndex, setDraggingKeywordIndex = React.useState<int option>(None)
+    let dragOverCategory, setDragOverCategory = React.useState<string option>(None)
+
+    let handleDragStart (index: int) =
+        setDraggingKeywordIndex (Some index)
+
+    let handleDragEnd () =
+        setDraggingKeywordIndex None
+        setDragOverCategory None
+
+    let handleDragOver (categoryName: string) (e: Browser.Types.DragEvent) =
+        e.preventDefault()
+        e.dataTransfer.dropEffect <- "move"
+        setDragOverCategory (Some categoryName)
+
+    let handleDragLeave () =
+        setDragOverCategory None
+
+    let handleDrop (categoryName: string) (e: Browser.Types.DragEvent) =
+        e.preventDefault()
+
+        match draggingKeywordIndex with
+        | Some index ->
+            let targetCategory = if categoryName = "Uncategorized" then None else Some categoryName
+            dispatch (MoveKeywordToCategory (index, targetCategory))
+            setDraggingKeywordIndex None
+            setDragOverCategory None
+        | None -> ()
+
     if keywords.IsEmpty then
         Html.div [
             prop.className "bg-background-card rounded-lg p-12 text-center"
@@ -618,7 +658,8 @@ let private categoryAccordion (categories: KeywordCategory list) (keywords: Keyw
                         prop.className "bg-background-card rounded-lg overflow-hidden"
                         prop.children [
                             // Category header
-                            categoryHeader category categoryKeywords.Length isExpanded dispatch
+                            let isDragOver = dragOverCategory = Some category.Name
+                            categoryHeader category categoryKeywords.Length isExpanded isDragOver dispatch handleDragOver handleDragLeave handleDrop
 
                             // Keyword list (shown when expanded)
                             if isExpanded then
@@ -635,7 +676,8 @@ let private categoryAccordion (categories: KeywordCategory list) (keywords: Keyw
                                         else
                                             categoryKeywords
                                             |> List.map (fun (index, kw) ->
-                                                keywordRow index kw dispatch onEdit
+                                                let isDragging = draggingKeywordIndex = Some index
+                                                keywordRow index kw isDragging dispatch onEdit handleDragStart handleDragEnd
                                             )
                                     )
                                 ]
