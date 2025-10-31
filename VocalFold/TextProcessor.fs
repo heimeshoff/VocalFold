@@ -81,6 +81,7 @@ let createKeywordReplacement (keyword: string) (replacement: string) : Settings.
     {
         Keyword = keyword
         Replacement = replacement
+        Category = None  // Default to no category
     }
 
 /// Validate a keyword replacement
@@ -96,22 +97,24 @@ let validateKeywordReplacement (replacement: Settings.KeywordReplacement) : stri
 let getExampleReplacements () : Settings.KeywordReplacement list =
     [
         // Punctuation shortcuts
-        { Keyword = "comma"; Replacement = "," }
-        { Keyword = "period"; Replacement = "." }
-        { Keyword = "question mark"; Replacement = "?" }
-        { Keyword = "exclamation mark"; Replacement = "!" }
-        { Keyword = "new line"; Replacement = "\n" }
+        { Keyword = "comma"; Replacement = ","; Category = Some "Punctuation" }
+        { Keyword = "period"; Replacement = "."; Category = Some "Punctuation" }
+        { Keyword = "question mark"; Replacement = "?"; Category = Some "Punctuation" }
+        { Keyword = "exclamation mark"; Replacement = "!"; Category = Some "Punctuation" }
+        { Keyword = "new line"; Replacement = "\n"; Category = Some "Punctuation" }
 
         // Email signature example
         {
             Keyword = "German email footer"
             Replacement = "Mit freundlichen Grüßen\nIhr VocalFold Team"
+            Category = Some "Email Templates"
         }
 
         // Code snippet example
         {
             Keyword = "main function"
             Replacement = "let main argv =\n    printfn \"Hello, World!\"\n    0"
+            Category = Some "Code Snippets"
         }
     ]
 

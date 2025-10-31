@@ -5,6 +5,22 @@ open System.IO
 open System.Text.Json
 open System.Text.Json.Serialization
 
+/// Keyword category configuration
+[<CLIMutable>]
+type KeywordCategory = {
+    /// Category name
+    [<JsonPropertyName("name")>]
+    Name: string
+
+    /// UI state: collapsed or expanded
+    [<JsonPropertyName("isExpanded")>]
+    IsExpanded: bool
+
+    /// Optional color tag
+    [<JsonPropertyName("color")>]
+    Color: string option
+}
+
 /// Keyword replacement configuration
 [<CLIMutable>]
 type KeywordReplacement = {
@@ -15,6 +31,10 @@ type KeywordReplacement = {
     /// What to type instead
     [<JsonPropertyName("replacement")>]
     Replacement: string
+
+    /// Optional category name
+    [<JsonPropertyName("category")>]
+    Category: string option
 }
 
 /// Typing speed configuration
@@ -89,7 +109,19 @@ type AppSettings = {
     /// Keyword replacements list
     [<JsonPropertyName("keywordReplacements")>]
     KeywordReplacements: KeywordReplacement list
+
+    /// Categories list
+    [<JsonPropertyName("categories")>]
+    Categories: KeywordCategory list
 }
+
+/// Default categories
+let defaultCategories = [
+    { Name = "Uncategorized"; IsExpanded = true; Color = None }
+    { Name = "Punctuation"; IsExpanded = true; Color = Some "#25abfe" }
+    { Name = "Email Templates"; IsExpanded = true; Color = Some "#ff8b00" }
+    { Name = "Code Snippets"; IsExpanded = true; Color = Some "#00d4aa" }
+]
 
 /// Default settings
 let defaultSettings = {
@@ -100,6 +132,7 @@ let defaultSettings = {
     TypingSpeedStr = "normal"  // Default to normal typing speed
     StartWithWindows = false  // Don't start with Windows by default
     KeywordReplacements = []  // No keyword replacements by default
+    Categories = defaultCategories  // Default categories for organization
 }
 
 /// Get the typing speed from settings
@@ -144,15 +177,24 @@ let load () : AppSettings =
                         settings
 
                 // Ensure KeywordReplacements is not null (handle old settings files)
-                let finalSettings =
+                let withKeywords =
                     if obj.ReferenceEquals(normalizedSettings.KeywordReplacements, null) then
                         Logger.info "KeywordReplacements not set in settings file, defaulting to empty list"
                         { normalizedSettings with KeywordReplacements = [] }
                     else
                         normalizedSettings
 
+                // Ensure Categories is not null (handle old settings files from before Phase 13)
+                let finalSettings =
+                    if obj.ReferenceEquals(withKeywords.Categories, null) || withKeywords.Categories.IsEmpty then
+                        Logger.info "Categories not set in settings file, creating default categories"
+                        { withKeywords with Categories = defaultCategories }
+                    else
+                        withKeywords
+
                 Logger.info (sprintf "Settings loaded from: %s" settingsPath)
                 Logger.info (sprintf "Loaded %d keyword replacements" finalSettings.KeywordReplacements.Length)
+                Logger.info (sprintf "Loaded %d categories" finalSettings.Categories.Length)
                 finalSettings
         else
             Logger.info "Settings file not found, using defaults"

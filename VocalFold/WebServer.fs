@@ -153,6 +153,141 @@ let addExampleKeywordsHandler (config: ServerConfig) : HttpHandler =
         }
 
 // ============================================================================
+// Category API Handlers
+// ============================================================================
+
+/// Handler for GET /api/categories
+let getCategoriesHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+            return! json settings.Categories next ctx
+        }
+
+/// Handler for POST /api/categories
+let createCategoryHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! category = ctx.BindJsonAsync<Settings.KeywordCategory>()
+            let settings = Settings.load()
+
+            // Check if category name already exists
+            let nameExists = settings.Categories |> List.exists (fun c -> c.Name = category.Name)
+
+            if nameExists then
+                ctx.SetStatusCode 400
+                return! json {| error = "Category name already exists" |} next ctx
+            else
+                let updatedSettings = { settings with Categories = settings.Categories @ [category] }
+                Settings.save updatedSettings
+                config.OnSettingsChanged updatedSettings
+                return! json {| success = true |} next ctx
+        }
+
+/// Handler for PUT /api/categories/:name
+let updateCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! updatedCategory = ctx.BindJsonAsync<Settings.KeywordCategory>()
+            let settings = Settings.load()
+
+            // Find the category to update
+            let categoryExists = settings.Categories |> List.exists (fun c -> c.Name = name)
+
+            if not categoryExists then
+                ctx.SetStatusCode 404
+                return! json {| error = "Category not found" |} next ctx
+            else
+                // Update the category
+                let updatedCategories =
+                    settings.Categories
+                    |> List.map (fun c -> if c.Name = name then updatedCategory else c)
+
+                // Also update keywords that reference the old category name (if renamed)
+                let updatedKeywords =
+                    if name <> updatedCategory.Name then
+                        settings.KeywordReplacements
+                        |> List.map (fun k ->
+                            match k.Category with
+                            | Some cat when cat = name -> { k with Category = Some updatedCategory.Name }
+                            | _ -> k
+                        )
+                    else
+                        settings.KeywordReplacements
+
+                let updatedSettings = { settings with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
+                Settings.save updatedSettings
+                config.OnSettingsChanged updatedSettings
+                return! json {| success = true |} next ctx
+        }
+
+/// Handler for DELETE /api/categories/:name
+let deleteCategoryHandler (config: ServerConfig) (name: string) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+
+            // Prevent deletion of "Uncategorized"
+            if name = "Uncategorized" then
+                ctx.SetStatusCode 400
+                return! json {| error = "Cannot delete Uncategorized category" |} next ctx
+            else
+                // Remove the category
+                let updatedCategories = settings.Categories |> List.filter (fun c -> c.Name <> name)
+
+                // Move all keywords from this category to "Uncategorized"
+                let updatedKeywords =
+                    settings.KeywordReplacements
+                    |> List.map (fun k ->
+                        match k.Category with
+                        | Some cat when cat = name -> { k with Category = Some "Uncategorized" }
+                        | _ -> k
+                    )
+
+                let updatedSettings = { settings with Categories = updatedCategories; KeywordReplacements = updatedKeywords }
+                Settings.save updatedSettings
+                config.OnSettingsChanged updatedSettings
+                return! json {| success = true |} next ctx
+        }
+
+/// Handler for PUT /api/categories/:name/state
+let toggleCategoryStateHandler (config: ServerConfig) (name: string) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+
+            // Toggle the IsExpanded state
+            let updatedCategories =
+                settings.Categories
+                |> List.map (fun c -> if c.Name = name then { c with IsExpanded = not c.IsExpanded } else c)
+
+            let updatedSettings = { settings with Categories = updatedCategories }
+            Settings.save updatedSettings
+            config.OnSettingsChanged updatedSettings
+            return! json {| success = true |} next ctx
+        }
+
+/// Handler for PUT /api/keywords/:index/category
+let moveKeywordToCategoryHandler (config: ServerConfig) (index: int) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! body = ctx.BindJsonAsync<{| category: string option |}>()
+            let settings = Settings.load()
+
+            if index >= 0 && index < settings.KeywordReplacements.Length then
+                let updatedKeywords =
+                    settings.KeywordReplacements
+                    |> List.mapi (fun i k -> if i = index then { k with Category = body.category } else k)
+                let updatedSettings = { settings with KeywordReplacements = updatedKeywords }
+                Settings.save updatedSettings
+                config.OnSettingsChanged updatedSettings
+                return! json {| success = true |} next ctx
+            else
+                ctx.SetStatusCode 404
+                return! json {| error = "Keyword not found" |} next ctx
+        }
+
+// ============================================================================
 // Routing
 // ============================================================================
 
@@ -171,6 +306,20 @@ let webApp (config: ServerConfig) : HttpHandler =
                         PUT    >=> updateKeywordHandler config index
                         DELETE >=> deleteKeywordHandler config index
                     ]
+                )
+                routef "/keywords/%i/category" (fun index ->
+                    PUT >=> moveKeywordToCategoryHandler config index
+                )
+                GET  >=> route "/categories" >=> getCategoriesHandler
+                POST >=> route "/categories" >=> createCategoryHandler config
+                routef "/categories/%s" (fun name ->
+                    choose [
+                        PUT    >=> updateCategoryHandler config name
+                        DELETE >=> deleteCategoryHandler config name
+                    ]
+                )
+                routef "/categories/%s/state" (fun name ->
+                    PUT >=> toggleCategoryStateHandler config name
                 )
             ]
         )
