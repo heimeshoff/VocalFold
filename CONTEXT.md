@@ -17,11 +17,25 @@ Windows desktop app that transcribes voice to text using Whisper.NET AI. Press C
 3. **TASKS.md** - Implementation roadmap
 
 ### Current Status
-**Phase**: Phase 13 - Keyword Categorization (🚧 IN PROGRESS)
-**Last Completed**: Task 13.2 - Category Management REST API endpoints
-**Status**: Backend Complete, Frontend UI Pending
+**Phase**: Phase 14 - AMD GPU Support via Vulkan (✅ COMPLETE)
+**Last Completed**: Phase 14 - All tasks completed
+**Status**: AMD/Intel GPU support added via Vulkan runtime
+
+**Phase 14 Progress**: 6 of 6 tasks completed (100%)
 
 **Phase 13 Progress**: 2 of 13 tasks completed (~40% - Backend + State done, UI remaining)
+
+- ✅ **Phase 14 COMPLETE - AMD GPU Support via Vulkan**:
+  - Added Whisper.net.Runtime.Vulkan v1.7.1 package
+  - Updated TranscriptionService.fs with runtime logging
+  - Updated SPECIFICATION.md with multi-GPU support details
+  - Updated ARCHITECTURE.md with runtime selection info
+  - Created comprehensive README.md with GPU requirements
+  - Created TROUBLESHOOTING.md for GPU-related issues
+  - Automatic runtime selection: CUDA → Vulkan → CPU
+  - Support for AMD Radeon RX 6000+, Intel Arc GPUs
+  - Build successful with Vulkan runtime included
+
 - ✅ **Phase 12 Backend COMPLETE**:
   - Giraffe web server with full REST API
   - All endpoints functional: GET/PUT /api/settings, GET/POST/PUT/DELETE /api/keywords

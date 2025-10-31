@@ -7,9 +7,9 @@
     "install:webui": "cd VocalFold.WebUI && npm install",
     "clean:webui": "node scripts/clean-webui.js",
     "fable:webui": "cd VocalFold.WebUI && dotnet fable --noCache",
-    "prepare:webui": "cd VocalFold.WebUI && cpx index.html dist && cpx \"src/**/*\" dist/src && cpx \"fable_modules/**/*\" dist/fable_modules",
+    "prepare:webui": "cd VocalFold.WebUI && npx cpx2 index.html dist && npx cpx2 \"src/**/*\" dist/src && npx cpx2 \"fable_modules/**/*\" dist/fable_modules",
     "bundle:webui": "cd VocalFold.WebUI && npm run build",
-    "finalize:webui": "cd VocalFold.WebUI && cpx \"dist-build/**/*\" dist",
+    "finalize:webui": "cd VocalFold.WebUI && npx cpx2 \"dist-build/**/*\" dist",
     "build:webui": "npm run clean:webui && npm run fable:webui && npm run prepare:webui && npm run bundle:webui && npm run finalize:webui",
     "build:backend": "cd VocalFold && dotnet build",
     "rebuild": "npm run build:webui && npm run build:backend",
@@ -18,6 +18,9 @@
   },
   "devDependencies": {
     "archiver": "^7.0.1",
-    "cpx2": "^7.0.1"
+    "cpx2": "^7.0.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.4",
+    "to-ico": "^1.1.5"
   }
 }

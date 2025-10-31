@@ -27,6 +27,8 @@
     <PackageReference Include="Whisper.net" Version="1.7.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.7.1" />
     <PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.7.1" />
+    <!-- AMD/Intel GPU support via Vulkan (Phase 14) -->
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.7.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
     <PackageReference Include="Giraffe" Version="6.4.0" />
@@ -41,6 +43,10 @@
     <Content Include="..\logo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>logo.png</Link>
+    </Content>
+    <Content Include="..\logo.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>logo.ico</Link>
     </Content>
   </ItemGroup>
 
