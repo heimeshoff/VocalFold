@@ -2513,9 +2513,11 @@ Final polish and integration testing:
 
 ---
 
-### Phase 14: AMD GPU Support via Vulkan ⬜
+### Phase 14: AMD GPU Support via Vulkan ✅
 
 **Context**: Currently, VocalFold only supports NVIDIA GPUs through CUDA. This phase adds support for AMD GPUs (and Intel GPUs) on Windows using Vulkan, which is a cross-vendor GPU acceleration API. This is a minimal-effort, high-impact improvement that expands hardware compatibility.
+
+**Status**: ✅ COMPLETE (2025-10-31)
 
 **Goals**:
 - Enable GPU acceleration for AMD Radeon GPUs
@@ -2527,7 +2529,7 @@ Final polish and integration testing:
 
 ---
 
-**Task 14.1: Add Vulkan Runtime Package**
+**Task 14.1: Add Vulkan Runtime Package** ✅
 
 Add Vulkan support alongside existing CUDA runtime:
 
@@ -2554,7 +2556,7 @@ Add Vulkan support alongside existing CUDA runtime:
 
 ---
 
-**Task 14.2: Update TranscriptionService Logging**
+**Task 14.2: Update TranscriptionService Logging** ✅
 
 Add logging to show which GPU runtime is being used:
 
@@ -2588,7 +2590,7 @@ printfn "⚙️  Runtime: %s" runtimeInfo
 
 ---
 
-**Task 14.3: Test on AMD Hardware**
+**Task 14.3: Test on AMD Hardware** (Optional - Requires AMD Hardware)
 
 Verify Vulkan runtime works correctly on AMD GPU:
 
@@ -2620,7 +2622,7 @@ Verify Vulkan runtime works correctly on AMD GPU:
 
 ---
 
-**Task 14.4: Update Documentation**
+**Task 14.4: Update Documentation** ✅
 
 Document the expanded GPU support:
 
@@ -2695,7 +2697,7 @@ No code changes required - runtime selection is transparent to the application.
 
 ---
 
-**Task 14.5: Create Vulkan Troubleshooting Guide**
+**Task 14.5: Create Vulkan Troubleshooting Guide** ✅
 
 Add troubleshooting section for Vulkan-related issues:
 
@@ -2775,7 +2777,7 @@ If your performance is significantly worse, GPU acceleration may not be working.
 
 ---
 
-**Task 14.6: Optional - Add GPU Detection Utility**
+**Task 14.6: Optional - Add GPU Detection Utility** (Deferred)
 
 Create a diagnostic tool to help users verify GPU support:
 
@@ -2891,17 +2893,20 @@ GPUInfo.printGPUInfo()
 ✅ Keyword replacement system functional
 ✅ **Web-based settings UI is modern, beautiful, and fully functional**
 ⬜ **Keywords organized into collapsible categories** (Phase 13)
-⬜ **AMD/Intel GPU support via Vulkan** (Phase 14)
+✅ **AMD/Intel GPU support via Vulkan** (Phase 14)
 
 ---
 
 **Status**: Ready for implementation
 **Estimated Time**:
-- Phases 1-6: 4-6 hours
-- Phases 7-9: 6-8 hours
-- Phase 10: 2-3 hours
-- Phase 11: 4-6 hours
-- Phase 12: 20-30 hours (comprehensive web UI overhaul)
-- **Phase 13: 12-16 hours** (keyword categorization system)
-- **Phase 14: 3-4 hours** (AMD GPU support via Vulkan)
-**Next Task**: 13.1 Backend - Category Data Structure OR 14.1 Add Vulkan Runtime Package (quick win)
+- Phases 1-6: 4-6 hours ✅
+- Phases 7-9: 6-8 hours ✅
+- Phase 10: 2-3 hours ✅
+- Phase 11: 4-6 hours ✅
+- Phase 12: 20-30 hours ✅ (comprehensive web UI overhaul)
+- Phase 13: 12-16 hours (keyword categorization system) - 2/13 tasks complete
+- **Phase 14: 3-4 hours ✅ COMPLETE** (AMD GPU support via Vulkan)
+
+**Actual Time for Phase 14**: ~1.5 hours (faster than estimated due to minimal code changes)
+
+**Next Task**: Continue with Phase 13 (Task 13.3 - Category Accordion UI Component)

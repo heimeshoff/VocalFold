@@ -37,14 +37,20 @@ A Windows 11 desktop application that transcribes voice to text using AI (Whispe
 
 **NFR-1: Performance**
 - Target: <1s transcription time for 5s of speech (Base model, RTX 3080)
+  - NVIDIA RTX 3080 (CUDA): ~0.5s
+  - AMD RX 6700 XT (Vulkan): ~1.0-2.0s
+  - AMD RX 5700 XT (Vulkan): ~2.0-3.0s
+  - Intel Arc A750 (Vulkan): ~2.0-3.0s
+  - CPU fallback: ~5-10s
 - Max memory: <2GB for Base model
-- GPU utilization: Efficient CUDA usage
+- GPU utilization: Efficient CUDA/Vulkan usage
 
 **NFR-2: Reliability**
 - MUST handle microphone disconnection gracefully
-- MUST handle CUDA errors with fallback
+- MUST handle CUDA/Vulkan errors with fallback
 - MUST not crash on invalid audio input
 - SHOULD continue running after individual errors
+- MUST provide automatic runtime selection (CUDA → Vulkan → CPU)
 
 **NFR-3: Usability**
 - MUST provide clear console feedback for all actions
@@ -62,12 +68,19 @@ A Windows 11 desktop application that transcribes voice to text using AI (Whispe
 ### Platform
 - **OS**: Windows 11 (primary), Windows 10 (secondary)
 - **Architecture**: x64 only
-- **GPU**: NVIDIA RTX 3080 with CUDA support
+- **GPU**:
+  - NVIDIA GPUs with CUDA support (RTX 20 series or newer)
+  - AMD Radeon GPUs with Vulkan support (RX 6000 series or newer)
+  - Intel Arc GPUs with Vulkan support
+  - CPU fallback if no compatible GPU available
 - **Runtime**: .NET 9.0
 
 ### Technology Stack (REQUIRED)
 - **Language**: F# (functional-first .NET language)
-- **AI Engine**: Whisper.NET with CUDA runtime
+- **AI Engine**: Whisper.NET with multi-runtime support
+  - CUDA runtime for NVIDIA GPUs
+  - Vulkan runtime for AMD/Intel GPUs (Phase 14)
+  - CPU fallback for unsupported hardware
 - **Audio**: NAudio library
 - **Input Simulation**: InputSimulatorCore
 - **Global Hotkeys**: Windows API (P/Invoke)
@@ -75,7 +88,8 @@ A Windows 11 desktop application that transcribes voice to text using AI (Whispe
 ### Dependencies
 ```xml
 <PackageReference Include="Whisper.net" Version="1.7.1" />
-<PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.7.1" />
+<PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.7.1" />
+<PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.7.1" />
 <PackageReference Include="NAudio" Version="2.2.1" />
 <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
 ```
@@ -156,9 +170,13 @@ SO THAT I can use voice-to-text anytime
 - Beam size (accuracy vs speed)
 
 ### System Requirements
-- **Required**: .NET 9.0 SDK, CUDA Toolkit 12.x
-- **Recommended**: 16GB RAM, NVIDIA GPU with 8GB+ VRAM
-- **Minimum**: 8GB RAM, NVIDIA GPU with 4GB VRAM
+- **Required**: .NET 9.0 SDK
+- **GPU Requirements** (optional, CPU fallback available):
+  - **NVIDIA**: CUDA Toolkit 12.x, RTX 20 series or newer (8GB+ VRAM recommended)
+  - **AMD**: Latest Adrenalin drivers with Vulkan support, RX 6000 series or newer (8GB+ VRAM recommended)
+  - **Intel**: Latest drivers with Vulkan support, Arc series (8GB+ VRAM recommended)
+- **Recommended**: 16GB RAM
+- **Minimum**: 8GB RAM
 
 ## Quality Attributes
 

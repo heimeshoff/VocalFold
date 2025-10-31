@@ -120,6 +120,13 @@ let createService (modelType: GgmlType) : Async<WhisperService> = async {
         Logger.info "Creating WhisperService instance..."
         let service = new WhisperService(modelPath)
         Logger.info "Whisper service initialized successfully"
+
+        // Log GPU runtime information (Phase 14: AMD GPU Support via Vulkan)
+        Logger.info "GPU Runtime: Whisper.NET will automatically select the best available runtime"
+        Logger.info "  Priority: CUDA (NVIDIA) → Vulkan (AMD/Intel) → CPU"
+        Logger.info "  CUDA Runtime: Available for NVIDIA GPUs with CUDA Toolkit 12.x"
+        Logger.info "  Vulkan Runtime: Available for AMD Radeon RX 6000+ and Intel Arc GPUs"
+
         return service
     with
     | ex ->

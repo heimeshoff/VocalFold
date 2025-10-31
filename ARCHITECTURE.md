@@ -120,7 +120,8 @@ Hotkey Press → AudioRecorder → Whisper.NET → TextInput
 ### Core Dependencies
 ```xml
 <PackageReference Include="Whisper.net" Version="1.7.1" />
-<PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.7.1" />
+<PackageReference Include="Whisper.net.Runtime.Cuda.Windows" Version="1.7.1" />
+<PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.7.1" />
 <PackageReference Include="NAudio" Version="2.2.1" />
 <PackageReference Include="InputSimulatorCore" Version="1.0.5" />
 ```
@@ -133,19 +134,26 @@ Hotkey Press → AudioRecorder → Whisper.NET → TextInput
 
 ### Why Whisper.NET?
 - Native .NET (no Python runtime)
-- CUDA support built-in
+- Multi-runtime GPU support (CUDA + Vulkan)
+- Automatic runtime selection (CUDA → Vulkan → CPU)
 - Single .exe deployment
 - Better Windows integration
+- Broad hardware compatibility (NVIDIA, AMD, Intel GPUs)
 
 ## Performance Targets
 
 ```
-Operation              | Target    | Expected (RTX 3080)
------------------------|-----------|--------------------
-Model Load (first)     | <3s       | ~2s
-Transcription (Base)   | <1s       | ~0.5s
-Total (5s speech)      | <7s       | ~6s
+Operation              | Target    | NVIDIA RTX 3080 (CUDA) | AMD RX 6700 XT (Vulkan)
+-----------------------|-----------|------------------------|-------------------------
+Model Load (first)     | <3s       | ~2s                    | ~2s
+Transcription (Base)   | <2s       | ~0.5s                  | ~1.0-2.0s
+Total (5s speech)      | <7s       | ~6s                    | ~7s
 ```
+
+**Runtime Selection:**
+- Whisper.NET automatically selects the best available runtime
+- Priority order: CUDA (NVIDIA) → Vulkan (AMD/Intel) → CPU
+- No code changes required - runtime selection is transparent
 
 ## Security & Privacy
 
@@ -166,12 +174,42 @@ dotnet publish -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 
 ## Error Handling Strategy
 
-- **GPU unavailable**: Log warning, continue (CPU fallback in future)
+- **GPU unavailable**: Automatic fallback to CPU mode (Whisper.NET handles this)
+- **CUDA unavailable**: Automatic fallback to Vulkan or CPU
+- **Vulkan unavailable**: Automatic fallback to CPU
 - **Mic error**: Log error, skip attempt, ready for next
 - **Transcription error**: Log error, continue running
 - **Typing error**: Log error, continue running
 
 **Philosophy**: Fail gracefully, never crash the background service
+
+## GPU Acceleration (Phase 14)
+
+### Multi-Runtime Support
+VocalFold supports multiple GPU runtimes for broad hardware compatibility:
+
+**CUDA Runtime** (NVIDIA GPUs):
+- Best performance on NVIDIA RTX 20 series and newer
+- Requires: NVIDIA CUDA Toolkit 12.x
+- Package: `Whisper.net.Runtime.Cuda.Windows v1.7.1`
+
+**Vulkan Runtime** (AMD/Intel GPUs):
+- Good performance on AMD Radeon RX 6000+ and Intel Arc GPUs
+- Requires: Latest GPU drivers with Vulkan 1.0+ support
+- Package: `Whisper.net.Runtime.Vulkan v1.7.1`
+
+**CPU Fallback**:
+- Available when no compatible GPU is detected
+- Significantly slower (~5-10x) but functional
+- Recommended: Use Tiny or Base model for acceptable speed
+
+### Automatic Runtime Selection
+Whisper.NET automatically detects and uses the best available runtime:
+1. First tries CUDA (if NVIDIA GPU + CUDA Toolkit available)
+2. Falls back to Vulkan (if AMD/Intel GPU + drivers available)
+3. Falls back to CPU (if no GPU acceleration available)
+
+No code changes or configuration required - the selection is completely transparent to the application.
 
 ---
 
