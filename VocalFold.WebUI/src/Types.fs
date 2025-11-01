@@ -41,6 +41,7 @@ type Page =
     | SystemSettings
     | GeneralSettings
     | KeywordSettings
+    | About
 
 type LoadingState<'T> =
     | NotStarted

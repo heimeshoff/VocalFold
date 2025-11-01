@@ -348,26 +348,42 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                 ]
                             ]
                             Html.nav [
+                                prop.className "flex flex-col h-full"
                                 prop.children [
-                                    Html.button [
-                                        prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
-                                        prop.text "Dashboard"
-                                        prop.onClick (fun _ -> dispatch (NavigateToPage Dashboard))
+                                    Html.div [
+                                        prop.className "flex-1"
+                                        prop.children [
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                                prop.text "Dashboard"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage Dashboard))
+                                            ]
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                                prop.text "System"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage SystemSettings))
+                                            ]
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                                prop.text "General"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage GeneralSettings))
+                                            ]
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                                prop.text "Keywords"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage KeywordSettings))
+                                            ]
+                                        ]
                                     ]
-                                    Html.button [
-                                        prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
-                                        prop.text "System"
-                                        prop.onClick (fun _ -> dispatch (NavigateToPage SystemSettings))
-                                    ]
-                                    Html.button [
-                                        prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
-                                        prop.text "General"
-                                        prop.onClick (fun _ -> dispatch (NavigateToPage GeneralSettings))
-                                    ]
-                                    Html.button [
-                                        prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
-                                        prop.text "Keywords"
-                                        prop.onClick (fun _ -> dispatch (NavigateToPage KeywordSettings))
+                                    Html.div [
+                                        prop.className "mt-auto pt-4 border-t border-text-secondary/20"
+                                        prop.children [
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth text-text-secondary hover:text-text-primary"
+                                                prop.text "About"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage About))
+                                            ]
+                                        ]
                                     ]
                                 ]
                             ]
@@ -387,6 +403,8 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                 Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey model.KeywordsPath model.EditingKeywordsPath dispatch
                             | KeywordSettings ->
                                 Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
+                            | About ->
+                                Components.About.view dispatch
                         ]
                     ]
                 ]

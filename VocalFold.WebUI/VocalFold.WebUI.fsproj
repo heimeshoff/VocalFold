@@ -13,6 +13,7 @@
     <Compile Include="src/Components/SystemSettings.fs" />
     <Compile Include="src/Components/GeneralSettings.fs" />
     <Compile Include="src/Components/KeywordManager.fs" />
+    <Compile Include="src/Components/About.fs" />
     <Compile Include="src/App.fs" />
   </ItemGroup>
 
