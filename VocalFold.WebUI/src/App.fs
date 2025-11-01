@@ -331,7 +331,7 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                 prop.children [
                     // Sidebar (placeholder)
                     Html.aside [
-                        prop.className "w-64 h-screen bg-background-sidebar p-6"
+                        prop.className "w-64 h-screen bg-background-sidebar p-6 flex flex-col"
                         prop.children [
                             Html.div [
                                 prop.className "flex items-center gap-3 mb-8"
@@ -348,10 +348,10 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                 ]
                             ]
                             Html.nav [
-                                prop.className "flex flex-col h-full"
+                                prop.className "flex flex-col flex-1 overflow-hidden"
                                 prop.children [
                                     Html.div [
-                                        prop.className "flex-1"
+                                        prop.className "flex-1 overflow-y-auto"
                                         prop.children [
                                             Html.button [
                                                 prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
@@ -376,10 +376,10 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                         ]
                                     ]
                                     Html.div [
-                                        prop.className "mt-auto pt-4 border-t border-text-secondary/20"
+                                        prop.className "pt-4 border-t border-text-secondary/20"
                                         prop.children [
                                             Html.button [
-                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth text-text-secondary hover:text-text-primary"
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth text-secondary font-bold"
                                                 prop.text "About"
                                                 prop.onClick (fun _ -> dispatch (NavigateToPage About))
                                             ]

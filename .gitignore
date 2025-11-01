@@ -65,3 +65,5 @@ VocalFold.WebUI/dist
 VocalFold.WebUI/dist-build
 node_modules
 VocalFold.WebUI/dist-build
+
+.fake

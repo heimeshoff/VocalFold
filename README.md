@@ -1,6 +1,18 @@
 # VocalFold
 System-wide voice-to-text dictation for Windows using AI
 
+---
+
+### ☕ Support VocalFold
+
+**Enjoying VocalFold?** Support the development of this free, open-source project!
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/heimeshoff)
+
+**[☕ Buy me a coffee on Ko-fi](https://ko-fi.com/heimeshoff)** — Your support helps keep this project alive and growing!
+
+---
+
 ## Overview
 VocalFold is a Windows desktop application that transcribes your voice to text using Whisper.NET AI. Press a global hotkey, speak, and your words appear as text at the cursor position in any application.
 
