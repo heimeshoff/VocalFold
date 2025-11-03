@@ -4021,3 +4021,1099 @@ Final polish and integration testing:
 **Estimated Time**: 8-12 hours (includes backend, frontend, testing, documentation)
 
 **Next Task**: Implement Phase 15 (Task 15.1 - Backend - Split Settings Data Model)
+
+---
+
+### Phase 16: Microphone Setup ⬜
+
+**Context**: Currently, VocalFold uses the default system microphone for audio recording. Users with multiple microphones (USB mics, headsets, virtual audio devices) need a way to select which microphone to use. Additionally, users need a way to test if their microphone is working before attempting voice transcription.
+
+**Goals**:
+- Add microphone selection to settings
+- Allow users to choose from available audio input devices
+- Provide a microphone test feature with visual feedback
+- Display real-time audio levels during testing
+- Save microphone preference to settings
+- Auto-fallback to default if selected device unavailable
+
+**Why This Matters**:
+- Many users have multiple audio input devices
+- Wrong microphone selection causes silent recordings
+- Audio level visualization helps troubleshooting
+- Testing prevents wasted transcription attempts
+
+**Technical Overview**:
+```
+NAudio WaveInEvent.DeviceCount -> List all available microphones
+Settings.SelectedMicrophoneIndex -> Store user's choice
+AudioRecorder.recordAudio(deviceNumber) -> Use selected device
+Web UI: Microphone dropdown + Test button
+Real-time visualization: Audio levels + waveform
+```
+
+---
+
+**Task 16.1: Backend - Microphone Data Model**
+
+Add microphone selection to settings data structure:
+
+**Changes to Settings.fs**:
+```fsharp
+/// Application settings (machine-specific, stored in settings.json)
+[<CLIMutable>]
+type AppSettings = {
+    // ... existing fields ...
+
+    /// Selected microphone device index (None = default device)
+    [<JsonPropertyName("selectedMicrophoneIndex")>]
+    SelectedMicrophoneIndex: int option
+}
+```
+
+**Update defaultSettings**:
+```fsharp
+let defaultSettings = {
+    // ... existing defaults ...
+    SelectedMicrophoneIndex = None  // Use default microphone
+}
+```
+
+**Implementation**:
+1. Add `SelectedMicrophoneIndex` field to `AppSettings` type
+2. Add default value (`None`) to `defaultSettings`
+3. Update JSON serialization to handle optional int
+4. Ensure backward compatibility (old settings files work)
+5. Update settings load/save functions
+6. Add validation to ensure device index is within range
+
+**Acceptance**:
+- Settings type includes microphone selection
+- Default settings use system default microphone
+- Settings serialize/deserialize correctly
+- Old settings files migrate cleanly
+
+---
+
+**Task 16.2: Backend - Microphone Enumeration API**
+
+Create functions to list and validate available microphones:
+
+**Add to AudioRecorder module** (`AudioRecorder.fs`):
+```fsharp
+/// Microphone device information
+type MicrophoneDevice = {
+    Index: int
+    Name: string
+    Channels: int
+    IsDefault: bool
+}
+
+/// Get a list of all available microphone devices
+let getAvailableDevices () : MicrophoneDevice list =
+    try
+        let defaultDeviceIndex = 0  // NAudio uses 0 for default
+
+        [0 .. WaveInEvent.DeviceCount - 1]
+        |> List.map (fun i ->
+            try
+                let caps = WaveInEvent.GetCapabilities(i)
+                {
+                    Index = i
+                    Name = caps.ProductName
+                    Channels = caps.Channels
+                    IsDefault = (i = defaultDeviceIndex)
+                }
+            with
+            | ex ->
+                Logger.warning (sprintf "Could not get info for device %d: %s" i ex.Message)
+                {
+                    Index = i
+                    Name = sprintf "Unknown Device %d" i
+                    Channels = 1
+                    IsDefault = false
+                }
+        )
+    with
+    | ex ->
+        Logger.error (sprintf "Error enumerating microphones: %s" ex.Message)
+        []
+
+/// Check if a device index is valid
+let isDeviceIndexValid (deviceIndex: int) : bool =
+    deviceIndex >= 0 && deviceIndex < WaveInEvent.DeviceCount
+
+/// Get device name by index
+let getDeviceName (deviceIndex: int) : string option =
+    try
+        if isDeviceIndexValid deviceIndex then
+            let caps = WaveInEvent.GetCapabilities(deviceIndex)
+            Some caps.ProductName
+        else
+            None
+    with
+    | ex ->
+        Logger.warning (sprintf "Could not get device name for index %d: %s" deviceIndex ex.Message)
+        None
+```
+
+**Implementation Notes**:
+- Use NAudio's `WaveInEvent.GetCapabilities()` to query device info
+- Handle cases where device enumeration fails gracefully
+- Return structured data (index, name, channels)
+- Mark default device for UI convenience
+- Validate device indices before use
+- Log warnings for inaccessible devices
+
+**Acceptance**:
+- Can enumerate all available microphones
+- Device list includes index, name, channels
+- Default device is marked
+- Invalid indices detected correctly
+- Graceful error handling
+
+---
+
+**Task 16.3: Backend - Microphone Test API**
+
+Implement microphone testing with real-time audio level feedback:
+
+**Add to AudioRecorder module**:
+```fsharp
+/// Real-time audio level callback
+type AudioLevelCallback = float32 -> unit
+
+/// Test recording state
+type TestRecordingState = {
+    WaveIn: WaveInEvent
+    mutable CurrentLevel: float32
+    mutable MaxLevel: float32
+    mutable AvgLevel: float32
+    mutable SampleCount: int
+    RecordingStopped: System.Threading.ManualResetEvent
+}
+
+/// Start a test recording (non-blocking, returns state)
+let startTestRecording (deviceIndex: int option) (onLevelUpdate: AudioLevelCallback option) : TestRecordingState =
+    let sampleRate = 16000
+    let channels = 1
+    let waveFormat = WaveFormat(sampleRate, 16, channels)
+
+    let waveIn = new WaveInEvent(
+        WaveFormat = waveFormat,
+        BufferMilliseconds = 50  // Faster updates for testing
+    )
+
+    // Set device if specified
+    match deviceIndex with
+    | Some idx -> waveIn.DeviceNumber <- idx
+    | None -> ()
+
+    let state = {
+        WaveIn = waveIn
+        CurrentLevel = 0.0f
+        MaxLevel = 0.0f
+        AvgLevel = 0.0f
+        SampleCount = 0
+        RecordingStopped = new System.Threading.ManualResetEvent(false)
+    }
+
+    // Data available handler
+    waveIn.DataAvailable.Add(fun args ->
+        let samples = bytesToFloat32 args.Buffer args.BytesRecorded
+
+        // Calculate buffer max level
+        let mutable bufferMaxLevel = 0.0f
+        for sample in samples do
+            let absLevel = abs sample
+            if absLevel > state.MaxLevel then
+                state.MaxLevel <- absLevel
+            if absLevel > bufferMaxLevel then
+                bufferMaxLevel <- absLevel
+            state.AvgLevel <- state.AvgLevel + absLevel
+            state.SampleCount <- state.SampleCount + 1
+
+        state.CurrentLevel <- bufferMaxLevel
+
+        // Call level update callback
+        match onLevelUpdate with
+        | Some callback -> callback bufferMaxLevel
+        | None -> ()
+    )
+
+    // Recording stopped handler
+    waveIn.RecordingStopped.Add(fun _ ->
+        state.RecordingStopped.Set() |> ignore
+    )
+
+    waveIn.StartRecording()
+    Logger.info "Test recording started"
+
+    state
+
+/// Stop test recording and return statistics
+let stopTestRecording (state: TestRecordingState) : (float32 * float32 * float32) =
+    state.WaveIn.StopRecording()
+    state.RecordingStopped.WaitOne(1000) |> ignore
+    state.WaveIn.Dispose()
+    state.RecordingStopped.Dispose()
+
+    let avgLevelNormalized =
+        if state.SampleCount > 0 then
+            state.AvgLevel / float32 state.SampleCount
+        else
+            0.0f
+
+    Logger.info (sprintf "Test recording stopped - Max: %.3f, Avg: %.3f" state.MaxLevel avgLevelNormalized)
+
+    // Return (currentLevel, maxLevel, avgLevel)
+    (state.CurrentLevel, state.MaxLevel, avgLevelNormalized)
+```
+
+**Implementation Notes**:
+- Non-blocking test recording (start/stop pattern)
+- Real-time audio level calculation
+- Callback mechanism for UI updates
+- Return statistics on stop (max, avg levels)
+- Faster buffer updates (50ms) for responsive UI
+- Proper resource cleanup
+
+**Acceptance**:
+- Can start/stop test recording
+- Real-time audio levels calculated
+- Callback fires on each buffer
+- No memory leaks
+- Works with any valid device index
+
+---
+
+**Task 16.4: Backend - REST API Endpoints**
+
+Add REST API endpoints for microphone management:
+
+**Add to WebServer.fs**:
+```fsharp
+/// GET /api/microphones - List all available microphones
+let getMicrophonesHandler: HttpHandler =
+    fun next ctx ->
+        try
+            let devices = AudioRecorder.getAvailableDevices()
+
+            // Convert to JSON-friendly format
+            let devicesJson =
+                devices
+                |> List.map (fun d ->
+                    {|
+                        index = d.Index
+                        name = d.Name
+                        channels = d.Channels
+                        isDefault = d.IsDefault
+                    |})
+
+            json devicesJson next ctx
+        with
+        | ex ->
+            RequestErrors.INTERNAL_ERROR (sprintf "Error listing microphones: %s" ex.Message) next ctx
+
+/// GET /api/microphones/test/start/:index - Start microphone test
+let startMicrophoneTestHandler (deviceIndex: int option) : HttpHandler =
+    fun next ctx ->
+        try
+            // Store test state in app state (implement with mutable ref or agent)
+            let state = AudioRecorder.startTestRecording deviceIndex None
+
+            // Store state in context (for later stop call)
+            // Implementation depends on your state management approach
+
+            json {| status = "started"; deviceIndex = deviceIndex |} next ctx
+        with
+        | ex ->
+            RequestErrors.INTERNAL_ERROR (sprintf "Error starting test: %s" ex.Message) next ctx
+
+/// POST /api/microphones/test/stop - Stop microphone test and get results
+let stopMicrophoneTestHandler: HttpHandler =
+    fun next ctx ->
+        try
+            // Retrieve state from context
+            // let state = ... (get from app state)
+            // let (current, max, avg) = AudioRecorder.stopTestRecording state
+
+            // For now, return dummy data (implement proper state management)
+            json {|
+                status = "stopped"
+                currentLevel = 0.0
+                maxLevel = 0.0
+                avgLevel = 0.0
+            |} next ctx
+        with
+        | ex ->
+            RequestErrors.INTERNAL_ERROR (sprintf "Error stopping test: %s" ex.Message) next ctx
+
+/// GET /api/microphones/test/levels - Get real-time audio levels (Server-Sent Events)
+let getMicrophoneLevelsHandler: HttpHandler =
+    fun next ctx ->
+        // Implementation: Server-Sent Events stream
+        // Send real-time audio level updates
+        // This requires SSE support in Giraffe
+        task {
+            // TODO: Implement SSE for real-time updates
+            return! RequestErrors.NOT_IMPLEMENTED "SSE not yet implemented" next ctx
+        }
+```
+
+**Update routing** in `configureApp`:
+```fsharp
+let webApp =
+    choose [
+        // ... existing routes ...
+
+        // Microphone endpoints
+        GET >=> route "/api/microphones" >=> getMicrophonesHandler
+        GET >=> routef "/api/microphones/test/start/%i" (Some >> startMicrophoneTestHandler)
+        GET >=> route "/api/microphones/test/start" >=> startMicrophoneTestHandler None
+        POST >=> route "/api/microphones/test/stop" >=> stopMicrophoneTestHandler
+        GET >=> route "/api/microphones/test/levels" >=> getMicrophoneLevelsHandler
+    ]
+```
+
+**Alternative Approach for Real-time Updates**:
+Instead of SSE, use polling:
+- Client polls `/api/microphones/test/levels` every 100ms
+- Server returns current level from test state
+- Simpler implementation, acceptable latency
+
+**Acceptance**:
+- Can list microphones via API
+- Can start/stop test recording via API
+- Test results return audio statistics
+- Error handling for invalid device indices
+- Thread-safe state management
+
+---
+
+**Task 16.5: Frontend - Microphone Settings Card (Types & API)**
+
+Create the frontend types and API functions for microphone management:
+
+**Add to `VocalFold.WebUI/src/Types.fs`**:
+```fsharp
+/// Microphone device information
+type MicrophoneDevice = {
+    Index: int
+    Name: string
+    Channels: int
+    IsDefault: bool
+}
+
+/// Microphone test status
+type MicrophoneTestStatus =
+    | Idle
+    | Testing
+    | Stopped
+
+/// Microphone test results
+type MicrophoneTestResult = {
+    CurrentLevel: float
+    MaxLevel: float
+    AvgLevel: float
+}
+```
+
+**Add to `VocalFold.WebUI/src/Api.fs`**:
+```fsharp
+let microphoneDeviceDecoder: Decoder<MicrophoneDevice> =
+    Decode.object (fun get -> {
+        Index = get.Required.Field "index" Decode.int
+        Name = get.Required.Field "name" Decode.string
+        Channels = get.Required.Field "channels" Decode.int
+        IsDefault = get.Required.Field "isDefault" Decode.bool
+    })
+
+/// Get all available microphones
+let getMicrophones () : JS.Promise<Result<MicrophoneDevice list, string>> =
+    async {
+        try
+            let! response = Http.request (baseUrl + "/api/microphones") |> Http.method GET |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString (Decode.list microphoneDeviceDecoder) response.responseText with
+                | Result.Ok devices -> return Result.Ok devices
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to get microphones: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Start microphone test
+let startMicrophoneTest (deviceIndex: int option) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let url =
+                match deviceIndex with
+                | Some idx -> baseUrl + sprintf "/api/microphones/test/start/%d" idx
+                | None -> baseUrl + "/api/microphones/test/start"
+
+            let! response = Http.request url |> Http.method GET |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to start test: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Stop microphone test
+let stopMicrophoneTest () : JS.Promise<Result<MicrophoneTestResult, string>> =
+    async {
+        try
+            let! response =
+                Http.request (baseUrl + "/api/microphones/test/stop")
+                |> Http.method POST
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                let decoder = Decode.object (fun get -> {
+                    CurrentLevel = get.Required.Field "currentLevel" Decode.float
+                    MaxLevel = get.Required.Field "maxLevel" Decode.float
+                    AvgLevel = get.Required.Field "avgLevel" Decode.float
+                })
+                match Decode.fromString decoder response.responseText with
+                | Result.Ok result -> return Result.Ok result
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to stop test: %s" ex.Message)
+    } |> Async.StartAsPromise
+```
+
+**Acceptance**:
+- Types defined for microphone data
+- API functions for listing microphones
+- API functions for starting/stopping tests
+- Proper error handling
+- Type-safe decoders
+
+---
+
+**Task 16.6: Frontend - Microphone Settings UI Component**
+
+Create the microphone settings card in the web UI:
+
+**Add to `VocalFold.WebUI/src/Components/`** (new file: `MicrophoneSettings.fs`):
+
+**Features**:
+1. **Microphone Dropdown**
+   - Lists all available microphones
+   - Shows default device with indicator
+   - Selected value bound to settings
+   - "Default Microphone" option at top
+
+2. **Test Button**
+   - Starts/stops microphone test
+   - Button text changes: "Test Microphone" → "Stop Test"
+   - Disabled while recording actual voice input
+
+3. **Real-time Audio Level Visualization**
+   - Horizontal bar showing current audio level
+   - Color-coded: Gray (no input) → Blue (low) → Orange (good) → Red (clipping)
+   - Updates in real-time during test
+   - Smooth animations
+
+4. **Test Results Display**
+   - Max level achieved
+   - Average level
+   - Duration of test
+   - Pass/fail indicator (is mic working?)
+
+**Component Structure**:
+```fsharp
+module MicrophoneSettings
+
+open Feliz
+open Feliz.UseElmish
+open Elmish
+
+type Model = {
+    Microphones: MicrophoneDevice list
+    SelectedIndex: int option
+    TestStatus: MicrophoneTestStatus
+    CurrentLevel: float
+    MaxLevel: float
+    AvgLevel: float
+    IsLoading: bool
+    Error: string option
+}
+
+type Msg =
+    | LoadMicrophones
+    | MicrophonesLoaded of Result<MicrophoneDevice list, string>
+    | SelectMicrophone of int option
+    | StartTest
+    | StopTest
+    | TestStarted of Result<unit, string>
+    | TestStopped of Result<MicrophoneTestResult, string>
+    | UpdateLevel of float
+    | SaveSettings
+
+let init selectedIndex =
+    {
+        Microphones = []
+        SelectedIndex = selectedIndex
+        TestStatus = Idle
+        CurrentLevel = 0.0
+        MaxLevel = 0.0
+        AvgLevel = 0.0
+        IsLoading = true
+        Error = None
+    }, Cmd.ofMsg LoadMicrophones
+
+let update msg model =
+    match msg with
+    | LoadMicrophones ->
+        model, Cmd.OfPromise.perform Api.getMicrophones () MicrophonesLoaded
+
+    | MicrophonesLoaded (Ok devices) ->
+        { model with Microphones = devices; IsLoading = false }, Cmd.none
+
+    | MicrophonesLoaded (Error err) ->
+        { model with Error = Some err; IsLoading = false }, Cmd.none
+
+    | SelectMicrophone idx ->
+        { model with SelectedIndex = idx }, Cmd.ofMsg SaveSettings
+
+    | StartTest ->
+        let cmd = Cmd.OfPromise.perform Api.startMicrophoneTest model.SelectedIndex TestStarted
+        { model with TestStatus = Testing; CurrentLevel = 0.0; MaxLevel = 0.0 }, cmd
+
+    | StopTest ->
+        let cmd = Cmd.OfPromise.perform Api.stopMicrophoneTest () TestStopped
+        { model with TestStatus = Idle }, cmd
+
+    | TestStarted (Ok ()) ->
+        model, Cmd.none
+
+    | TestStarted (Error err) ->
+        { model with Error = Some err; TestStatus = Idle }, Cmd.none
+
+    | TestStopped (Ok result) ->
+        { model with
+            MaxLevel = result.MaxLevel
+            AvgLevel = result.AvgLevel
+            CurrentLevel = 0.0
+        }, Cmd.none
+
+    | TestStopped (Error err) ->
+        { model with Error = Some err }, Cmd.none
+
+    | UpdateLevel level ->
+        { model with
+            CurrentLevel = level
+            MaxLevel = max level model.MaxLevel
+        }, Cmd.none
+
+    | SaveSettings ->
+        // Call parent component to save settings
+        model, Cmd.none
+
+[<ReactComponent>]
+let MicrophoneSettingsCard (selectedIndex: int option) (onSave: int option -> unit) =
+    let model, dispatch = React.useElmish(init selectedIndex, update, [||])
+
+    Html.div [
+        prop.className "bg-gray-800 rounded-lg p-6 space-y-4"
+        prop.children [
+            // Card title
+            Html.h2 [
+                prop.className "text-xl font-semibold text-white mb-4"
+                prop.text "Microphone Setup"
+            ]
+
+            // Microphone dropdown
+            Html.div [
+                prop.className "space-y-2"
+                prop.children [
+                    Html.label [
+                        prop.className "block text-sm font-medium text-gray-300"
+                        prop.text "Select Microphone"
+                    ]
+                    Html.select [
+                        prop.className "w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        prop.value (match model.SelectedIndex with | Some idx -> string idx | None -> "-1")
+                        prop.onChange (fun (value: string) ->
+                            let idx =
+                                match System.Int32.TryParse(value) with
+                                | (true, -1) -> None
+                                | (true, i) -> Some i
+                                | _ -> None
+                            dispatch (SelectMicrophone idx)
+                        )
+                        prop.children [
+                            Html.option [
+                                prop.value "-1"
+                                prop.text "🎤 Default Microphone"
+                            ]
+                            for device in model.Microphones do
+                                Html.option [
+                                    prop.value (string device.Index)
+                                    prop.text (
+                                        if device.IsDefault then
+                                            sprintf "%s (Default)" device.Name
+                                        else
+                                            device.Name
+                                    )
+                                ]
+                        ]
+                    ]
+                ]
+            ]
+
+            // Test button
+            Html.div [
+                prop.className "flex items-center gap-4"
+                prop.children [
+                    Html.button [
+                        prop.className "px-6 py-2 rounded-lg font-medium transition-colors duration-200 " + (
+                            match model.TestStatus with
+                            | Testing -> "bg-red-500 hover:bg-red-600 text-white"
+                            | _ -> "bg-primary-500 hover:bg-primary-600 text-white"
+                        )
+                        prop.onClick (fun _ ->
+                            match model.TestStatus with
+                            | Testing -> dispatch StopTest
+                            | _ -> dispatch StartTest
+                        )
+                        prop.text (
+                            match model.TestStatus with
+                            | Testing -> "⏹ Stop Test"
+                            | _ -> "🎙 Test Microphone"
+                        )
+                    ]
+
+                    // Status indicator
+                    if model.TestStatus = Testing then
+                        Html.span [
+                            prop.className "text-sm text-gray-400 animate-pulse"
+                            prop.text "Recording..."
+                        ]
+                ]
+            ]
+
+            // Audio level visualization
+            if model.TestStatus = Testing || model.MaxLevel > 0.0 then
+                Html.div [
+                    prop.className "space-y-2"
+                    prop.children [
+                        Html.label [
+                            prop.className "block text-sm font-medium text-gray-300"
+                            prop.text "Audio Level"
+                        ]
+
+                        // Level bar
+                        Html.div [
+                            prop.className "w-full h-8 bg-gray-700 rounded-lg overflow-hidden"
+                            prop.children [
+                                Html.div [
+                                    prop.className "h-full transition-all duration-75 " + (
+                                        if model.CurrentLevel < 0.01 then "bg-gray-500"
+                                        elif model.CurrentLevel < 0.3 then "bg-blue-500"
+                                        elif model.CurrentLevel < 0.8 then "bg-secondary-500"
+                                        else "bg-red-500"
+                                    )
+                                    prop.style [
+                                        style.width (length.percent (model.CurrentLevel * 100.0))
+                                    ]
+                                ]
+                            ]
+                        ]
+
+                        // Statistics
+                        Html.div [
+                            prop.className "flex justify-between text-xs text-gray-400"
+                            prop.children [
+                                Html.span [ prop.text (sprintf "Current: %.1f%%" (model.CurrentLevel * 100.0)) ]
+                                Html.span [ prop.text (sprintf "Max: %.1f%%" (model.MaxLevel * 100.0)) ]
+                                Html.span [ prop.text (sprintf "Avg: %.1f%%" (model.AvgLevel * 100.0)) ]
+                            ]
+                        ]
+
+                        // Feedback
+                        if model.MaxLevel > 0.0 then
+                            Html.div [
+                                prop.className "text-sm " + (
+                                    if model.MaxLevel < 0.01 then "text-red-400"
+                                    elif model.MaxLevel < 0.1 then "text-yellow-400"
+                                    else "text-green-400"
+                                )
+                                prop.text (
+                                    if model.MaxLevel < 0.01 then
+                                        "⚠️ No audio detected. Check microphone connection and permissions."
+                                    elif model.MaxLevel < 0.1 then
+                                        "⚠️ Audio level is low. Speak louder or move closer to the microphone."
+                                    else
+                                        "✅ Microphone is working correctly!"
+                                )
+                            ]
+                    ]
+                ]
+
+            // Error display
+            match model.Error with
+            | Some err ->
+                Html.div [
+                    prop.className "bg-red-900/20 border border-red-500 rounded-lg p-3 text-red-400 text-sm"
+                    prop.text err
+                ]
+            | None -> Html.none
+        ]
+    ]
+```
+
+**Styling Notes**:
+- Use brand colors: `#25abfe` (blue) for primary, `#ff8b00` (orange) for secondary
+- Smooth transitions for audio level bar
+- Clear visual feedback for test status
+- Responsive design
+
+**Acceptance**:
+- Microphone dropdown shows all devices
+- Can select a microphone
+- Test button starts/stops test
+- Audio level bar updates in real-time
+- Clear feedback on microphone status
+- Saves selection to settings
+
+---
+
+**Task 16.7: Frontend - Integration with Settings Page**
+
+Add the microphone settings card to the main settings page:
+
+**Update `VocalFold.WebUI/src/Pages/Settings.fs`**:
+```fsharp
+// In the settings page layout, add:
+MicrophoneSettings.MicrophoneSettingsCard
+    model.Settings.SelectedMicrophoneIndex
+    (fun index -> dispatch (UpdateMicrophoneIndex index))
+```
+
+**Add to Settings Model and Msg**:
+```fsharp
+type Msg =
+    | ...
+    | UpdateMicrophoneIndex of int option
+    | SaveMicrophoneSettings
+
+let update msg model =
+    match msg with
+    | ...
+    | UpdateMicrophoneIndex idx ->
+        let updatedSettings = { model.Settings with SelectedMicrophoneIndex = idx }
+        { model with Settings = updatedSettings }, Cmd.ofMsg SaveMicrophoneSettings
+
+    | SaveMicrophoneSettings ->
+        let cmd = Cmd.OfPromise.perform Api.updateSettings model.Settings SettingsSaved
+        model, cmd
+```
+
+**UI Placement**:
+- Add microphone card to "System Settings" section
+- Place after hotkey configuration
+- Before "Advanced Settings" section
+
+**Acceptance**:
+- Microphone settings card appears on settings page
+- Changes persist when saved
+- UI updates reflect saved values
+- No layout issues
+
+---
+
+**Task 16.8: Integration with Main Recording Flow**
+
+Update the main recording workflow to use selected microphone:
+
+**Update in `Program.fs` or main app**:
+```fsharp
+// Load settings on startup
+let settings = Settings.load()
+
+// Use selected microphone for recording
+let deviceIndex = settings.SelectedMicrophoneIndex
+
+// Pass to recording function
+let recordingResult = AudioRecorder.recordAudio maxDurationSeconds deviceIndex
+```
+
+**Update `AudioRecorder.recordAudio` signature** (if not already done):
+```fsharp
+let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : RecordingResult =
+    // ... existing implementation already handles deviceNumber ...
+```
+
+**Validation on startup**:
+```fsharp
+// Check if selected microphone is still available
+match settings.SelectedMicrophoneIndex with
+| Some idx when not (AudioRecorder.isDeviceIndexValid idx) ->
+    Logger.warning (sprintf "Selected microphone (index %d) not found, falling back to default" idx)
+    // Update settings to use default
+    Settings.save { settings with SelectedMicrophoneIndex = None } |> ignore
+| _ -> ()
+```
+
+**Acceptance**:
+- Main app uses selected microphone
+- Fallback to default if device unavailable
+- Warning logged when device missing
+- Settings updated on fallback
+
+---
+
+**Task 16.9: Real-time Audio Level Updates (Polling Implementation)**
+
+Implement client-side polling for real-time audio levels during testing:
+
+**Backend - Add endpoint for current level**:
+```fsharp
+/// GET /api/microphones/test/level - Get current audio level
+let getCurrentLevelHandler: HttpHandler =
+    fun next ctx ->
+        try
+            // Get current level from test state
+            // let level = getCurrentTestLevel()  // Implement state access
+
+            json {| level = 0.0 |} next ctx
+        with
+        | ex ->
+            RequestErrors.INTERNAL_ERROR (sprintf "Error getting level: %s" ex.Message) next ctx
+```
+
+**Frontend - Add polling logic**:
+```fsharp
+// In MicrophoneSettings component update function:
+| StartTest ->
+    let startCmd = Cmd.OfPromise.perform Api.startMicrophoneTest model.SelectedIndex TestStarted
+
+    // Start polling for levels
+    let pollCmd =
+        Cmd.OfAsync.perform
+            (fun _ -> async {
+                while model.TestStatus = Testing do
+                    let! levelResult = Api.getCurrentLevel() |> Async.AwaitPromise
+                    match levelResult with
+                    | Ok level -> dispatch (UpdateLevel level)
+                    | Error _ -> ()
+                    do! Async.Sleep 100  // Poll every 100ms
+            })
+            ()
+            (fun _ -> ())
+
+    { model with TestStatus = Testing }, Cmd.batch [ startCmd; pollCmd ]
+```
+
+**Alternative Simpler Approach**:
+Use JavaScript `setInterval` for polling:
+```fsharp
+React.useEffect((fun () ->
+    if model.TestStatus = Testing then
+        let intervalId =
+            Interop.setInterval (fun () ->
+                promise {
+                    let! result = Api.getCurrentLevel()
+                    match result with
+                    | Ok level -> dispatch (UpdateLevel level)
+                    | Error _ -> ()
+                }
+            ) 100  // 100ms interval
+
+        // Cleanup on unmount or status change
+        { new System.IDisposable with
+            member _.Dispose() = Interop.clearInterval intervalId
+        }
+    else
+        { new System.IDisposable with member _.Dispose() = () }
+), [| box model.TestStatus |])
+```
+
+**Acceptance**:
+- Audio levels update during test
+- ~100ms update interval
+- No performance issues
+- Polling stops when test stops
+- No memory leaks
+
+---
+
+**Task 16.10: Testing, Polish & Documentation**
+
+Comprehensive testing and documentation:
+
+**Testing Checklist**:
+- [ ] Enumerate microphones on system with 0 devices
+- [ ] Enumerate microphones on system with 1 device
+- [ ] Enumerate microphones on system with multiple devices
+- [ ] Select different microphones and verify recording uses correct device
+- [ ] Test with USB microphone (plug/unplug scenarios)
+- [ ] Test microphone test feature
+- [ ] Real-time audio levels update correctly
+- [ ] Audio level bar colors change appropriately
+- [ ] Test results accurate (max, avg levels)
+- [ ] Settings persist across restarts
+- [ ] Fallback to default if device unavailable
+- [ ] Validation prevents invalid device indices
+- [ ] Error handling for device enumeration failures
+- [ ] Error handling for test recording failures
+- [ ] UI responsive during testing
+- [ ] No audio artifacts during testing
+- [ ] No memory leaks with repeated tests
+
+**Edge Cases**:
+- [ ] Device disconnected while testing
+- [ ] Device disconnected between test and actual recording
+- [ ] Multiple instances of app (device already in use)
+- [ ] Microphone permissions denied (Windows 11)
+- [ ] Virtual audio devices (VoiceMeeter, etc.)
+- [ ] Bluetooth microphones (latency)
+- [ ] USB microphones (potential issues)
+
+**Performance Testing**:
+- [ ] Device enumeration fast (<100ms)
+- [ ] Test start/stop responsive (<200ms)
+- [ ] Audio level updates smooth (60fps capable)
+- [ ] No CPU overhead when not testing
+- [ ] No memory leaks with 100+ test cycles
+
+**UI/UX Polish**:
+- [ ] Smooth animations
+- [ ] Clear visual feedback
+- [ ] Helpful error messages
+- [ ] Tooltips for technical terms
+- [ ] Loading states
+- [ ] Disabled states when appropriate
+- [ ] Keyboard accessibility
+- [ ] Screen reader compatibility
+
+**Documentation Updates**:
+
+**README.md**:
+```markdown
+### Microphone Setup
+
+VocalFold allows you to choose which microphone to use for voice input.
+
+1. Open Settings from the system tray
+2. Navigate to "Microphone Setup" section
+3. Select your preferred microphone from the dropdown
+4. Click "Test Microphone" to verify it's working
+5. Speak and watch the audio level bar - it should show activity
+6. If levels are too low, check:
+   - Microphone is not muted in Windows
+   - Microphone volume is adequate
+   - Correct microphone is selected
+   - Microphone permissions granted to VocalFold
+```
+
+**TROUBLESHOOTING.md**:
+```markdown
+### Microphone Issues
+
+**Problem**: No microphone detected
+- Check microphone is plugged in (USB) or enabled (built-in)
+- Check Windows Sound Settings → Input
+- Grant microphone permissions to VocalFold
+
+**Problem**: Wrong microphone used
+- Open Settings → Microphone Setup
+- Select correct microphone from dropdown
+- Test to verify
+
+**Problem**: Audio level too low
+- Increase microphone volume in Windows Sound Settings
+- Move closer to microphone
+- Check microphone is not muted
+- Test with "Test Microphone" feature
+
+**Problem**: Selected microphone not available on startup
+- VocalFold automatically falls back to default microphone
+- Check Windows logs for device warnings
+- Reconnect USB microphone if applicable
+```
+
+**Acceptance**:
+- All tests pass
+- Edge cases handled
+- Performance acceptable
+- UI polished
+- Documentation complete
+- Ready for production use
+
+---
+
+## Phase 16 Summary
+
+**What We Built**:
+- Microphone selection in system settings
+- Microphone enumeration (list all available devices)
+- Microphone test feature with real-time visualization
+- Audio level bar with color-coded feedback
+- REST API for microphone management
+- Web UI card for microphone setup
+- Integration with main recording flow
+- Automatic fallback to default device
+
+**Key Features**:
+✅ List all available microphones
+✅ Select preferred microphone
+✅ Test microphone with visual feedback
+✅ Real-time audio level visualization
+✅ Color-coded audio level bar (gray/blue/orange/red)
+✅ Test statistics (max, avg, current levels)
+✅ Pass/fail indicator for microphone functionality
+✅ Persistent microphone preference
+✅ Automatic fallback if device unavailable
+✅ Device validation on startup
+
+**Architecture**:
+- Backend: AudioRecorder module extensions
+- REST API: Giraffe endpoints for microphones
+- Frontend: Fable/React microphone settings card
+- Real-time updates: Polling (100ms interval)
+- State management: Settings.SelectedMicrophoneIndex
+- Error handling: Graceful fallbacks
+
+**Benefits**:
+- Users with multiple microphones can choose correct one
+- Test feature prevents wasted transcription attempts
+- Visual feedback helps troubleshooting
+- Clear indication of microphone issues
+- Automatic device validation
+- No more silent recordings from wrong device
+
+**Use Cases**:
+- User with USB microphone + built-in laptop mic
+- User with headset + desk microphone
+- User with virtual audio devices (streaming software)
+- User troubleshooting microphone issues
+- User ensuring microphone works before important recording
+
+**Technology**:
+- Backend: F#, NAudio WaveInEvent
+- Frontend: F#, Fable, React, TailwindCSS
+- Real-time: Client polling (100ms)
+- Storage: Settings.SelectedMicrophoneIndex (int option)
+
+**Tradeoffs**:
+- Polling adds minimal overhead during test
+- Device enumeration happens on page load (slight delay)
+- No Server-Sent Events (simpler implementation)
+- Test doesn't save audio (privacy, simplicity)
+
+---
+
+**Status**: Phase 16 specification complete, ready for implementation
+**Estimated Time**: 10-14 hours (includes backend, frontend, testing, documentation)
+
+**Next Task**: Implement Phase 16 (Task 16.1 - Backend - Microphone Data Model)

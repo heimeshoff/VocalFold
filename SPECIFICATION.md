@@ -10,9 +10,11 @@ A Windows 11 desktop application that transcribes voice to text using AI (Whispe
 **FR-1: Voice Recording**
 - MUST activate recording via global hotkey (Ctrl+Windows)
 - MUST capture audio from system microphone
+- MUST support microphone selection for multiple audio devices
 - MUST record at 16kHz mono (Whisper.NET-optimized format)
 - MUST support configurable max duration (default: 10 seconds)
 - SHOULD provide audio feedback when recording starts
+- SHOULD allow users to test microphone before recording
 
 **FR-2: AI Transcription**
 - MUST use Whisper.NET AI for speech-to-text
@@ -117,6 +119,13 @@ I WANT the app to run in background
 SO THAT I can use voice-to-text anytime
 ```
 
+### US-4: Microphone Selection and Testing
+```
+AS A user with multiple audio devices
+I WANT to select which microphone to use and test it
+SO THAT I can ensure my recordings work correctly
+```
+
 ## Success Criteria
 
 1. ✅ User can press hotkey in any app and speak
@@ -133,7 +142,6 @@ SO THAT I can use voice-to-text anytime
 - ❌ Real-time streaming transcription (processes after recording)
 - ❌ Multiple language detection (single language per session)
 - ❌ Voice commands for application control
-- ❌ GUI configuration interface (console-based)
 - ❌ macOS or Linux support
 - ❌ Mobile device support
 - ❌ Audio file transcription (microphone only)
@@ -161,13 +169,16 @@ SO THAT I can use voice-to-text anytime
 
 ## Configuration Options
 
-### User-Configurable (via code edits, future: config file)
+### User-Configurable (via web UI)
 - Hotkey combination
 - Recording duration
 - Whisper.NET model size
 - Language
 - Typing speed
 - Beam size (accuracy vs speed)
+- Microphone device selection
+- Keyword replacements and categories
+- Keywords file path (for cloud sync)
 
 ### System Requirements
 - **Required**: .NET 9.0 SDK

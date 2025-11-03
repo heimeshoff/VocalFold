@@ -8,6 +8,7 @@ open Browser.Types
 open Types
 open Components.Card
 open Components.Button
+open Components.MicrophoneSettings
 
 // ============================================================================
 // Key Display Names
@@ -287,7 +288,18 @@ let view (settings: LoadingState<AppSettings>) (isRecordingHotkey: bool) (pendin
 
             match settings with
             | LoadingState.Loaded s ->
-                SystemSettingsCard isRecordingHotkey s.HotkeyKey s.HotkeyModifiers pendingHotkey s.ModelSize dispatch s
+                Html.div [
+                    prop.className "space-y-6"
+                    prop.children [
+                        SystemSettingsCard isRecordingHotkey s.HotkeyKey s.HotkeyModifiers pendingHotkey s.ModelSize dispatch s
+
+                        // Microphone Settings Card
+                        MicrophoneSettingsCard s.SelectedMicrophoneIndex (fun index ->
+                            let updatedSettings = { s with SelectedMicrophoneIndex = index }
+                            dispatch (UpdateSettings updatedSettings)
+                        )
+                    ]
+                ]
             | LoadingState.Loading ->
                 Html.div [
                     prop.className "flex items-center justify-center py-12"

@@ -29,7 +29,62 @@ type RecordingState = {
     OnMuteStateChanged: (bool -> unit) option  // Callback when mute state changes (true = muted, false = unmuted)
 }
 
-// List all available input devices
+// Microphone device information
+type MicrophoneDevice = {
+    Index: int
+    Name: string
+    Channels: int
+    IsDefault: bool
+}
+
+// Get a list of all available microphone devices
+let getAvailableDevices () : MicrophoneDevice list =
+    try
+        let defaultDeviceIndex = 0  // NAudio uses 0 for default
+
+        [0 .. WaveInEvent.DeviceCount - 1]
+        |> List.map (fun i ->
+            try
+                let caps = WaveInEvent.GetCapabilities(i)
+                {
+                    Index = i
+                    Name = caps.ProductName
+                    Channels = caps.Channels
+                    IsDefault = (i = defaultDeviceIndex)
+                }
+            with
+            | ex ->
+                Logger.warning (sprintf "Could not get info for device %d: %s" i ex.Message)
+                {
+                    Index = i
+                    Name = sprintf "Unknown Device %d" i
+                    Channels = 1
+                    IsDefault = false
+                }
+        )
+    with
+    | ex ->
+        Logger.error (sprintf "Error enumerating microphones: %s" ex.Message)
+        []
+
+// Check if a device index is valid
+let isDeviceIndexValid (deviceIndex: int) : bool =
+    deviceIndex >= 0 && deviceIndex < WaveInEvent.DeviceCount
+
+// Get device name by index
+let getDeviceName (deviceIndex: int) : string option =
+    try
+        if isDeviceIndexValid deviceIndex then
+            let caps = WaveInEvent.GetCapabilities(deviceIndex)
+            Some caps.ProductName
+        else
+            None
+    with
+    | ex ->
+        Logger.warning (sprintf "Could not get device name for index %d: %s" deviceIndex ex.Message)
+        None
+
+// List all available input devices (console output for debugging)
 let listInputDevices () =
     printfn "Available microphones:"
     for i in 0 .. WaveInEvent.DeviceCount - 1 do
@@ -143,12 +198,7 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
 
 // Calculate frequency spectrum from audio samples (5 bands for 5 bars)
 let private calculateSpectrum (samples: float32[]) : float32[] =
-    // Debug: Check if we have actual audio data
-    let maxSample = if samples.Length > 0 then samples |> Array.map abs |> Array.max else 0.0f
-    Logger.debug (sprintf "calculateSpectrum called with %d samples, max amplitude: %.4f" samples.Length maxSample)
-
     if samples.Length < 256 then
-        Logger.debug "Not enough samples for FFT (need 256)"
         Array.zeroCreate 5
     else
         // Use 256 samples for FFT (must be power of 2)
@@ -160,10 +210,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
         for i in 0 .. fftLength - 1 do
             if startIdx + i < samples.Length then
                 fftBuffer.[i] <- Complex(X = samples.[startIdx + i], Y = 0.0f)
-
-        // Debug: Check what's in the FFT buffer before windowing
-        let bufferMax = fftBuffer |> Array.map (fun c -> abs c.X) |> Array.max
-        Logger.debug (sprintf "FFT buffer filled, max value before windowing: %.4f" bufferMax)
 
         // Apply Hamming window to reduce spectral leakage
         for i in 0 .. fftLength - 1 do
@@ -203,9 +249,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
             if binsInBand > 0 then
                 bands.[bandIdx] <- float32 (bandEnergy / float binsInBand)
 
-            // Debug: Log band calculation
-            Logger.debug (sprintf "Band %d: %d bins, energy=%.4f, avg=%.4f" bandIdx binsInBand bandEnergy bands.[bandIdx])
-
         // Find max value for auto-scaling
         let maxBand = bands |> Array.max
 
@@ -216,10 +259,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
                 bands |> Array.map (fun x -> min 1.0f ((x / maxBand) * 1.5f))  // Auto-scale + 50% boost
             else
                 Array.zeroCreate 5
-
-        // Debug: Log raw and normalized values
-        Logger.debug (sprintf "FFT Bands (raw): [%.4f, %.4f, %.4f, %.4f, %.4f] max=%.4f" bands.[0] bands.[1] bands.[2] bands.[3] bands.[4] maxBand)
-        Logger.debug (sprintf "FFT Bands (norm): [%.3f, %.3f, %.3f, %.3f, %.3f]" normalized.[0] normalized.[1] normalized.[2] normalized.[3] normalized.[4])
 
         normalized
 
@@ -333,10 +372,6 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
                 else
                     state.RecordedSamples.ToArray()
 
-            // Debug: Check sample data
-            let sampleMax = if recentSamples.Length > 0 then recentSamples |> Array.map abs |> Array.max else 0.0f
-            Logger.debug (sprintf "Passing %d samples to FFT, max: %.4f" recentSamples.Length sampleMax)
-
             let spectrum = calculateSpectrum recentSamples
             callback spectrum
         | None -> ()
@@ -412,3 +447,92 @@ let stopRecording (state: RecordingState) : RecordingResult =
         SampleRate = sampleRate
         IsMuted = isMuted
     }
+
+// Test recording state (simpler than normal recording state)
+type TestRecordingState = {
+    WaveIn: WaveInEvent
+    mutable CurrentLevel: float32
+    mutable MaxLevel: float32
+    mutable AvgLevel: float32
+    mutable SampleCount: int
+    RecordingStopped: System.Threading.ManualResetEvent
+}
+
+// Real-time audio level callback
+type AudioLevelCallback = float32 -> unit
+
+// Start a test recording (non-blocking, returns state)
+let startTestRecording (deviceIndex: int option) (onLevelUpdate: AudioLevelCallback option) : TestRecordingState =
+    let sampleRate = 16000
+    let channels = 1
+    let waveFormat = WaveFormat(sampleRate, 16, channels)
+
+    let waveIn = new WaveInEvent(
+        WaveFormat = waveFormat,
+        BufferMilliseconds = 50  // Faster updates for testing
+    )
+
+    // Set device if specified
+    match deviceIndex with
+    | Some idx -> waveIn.DeviceNumber <- idx
+    | None -> ()
+
+    let state = {
+        WaveIn = waveIn
+        CurrentLevel = 0.0f
+        MaxLevel = 0.0f
+        AvgLevel = 0.0f
+        SampleCount = 0
+        RecordingStopped = new System.Threading.ManualResetEvent(false)
+    }
+
+    // Data available handler
+    waveIn.DataAvailable.Add(fun args ->
+        let samples = bytesToFloat32 args.Buffer args.BytesRecorded
+
+        // Calculate buffer max level
+        let mutable bufferMaxLevel = 0.0f
+        for sample in samples do
+            let absLevel = abs sample
+            if absLevel > state.MaxLevel then
+                state.MaxLevel <- absLevel
+            if absLevel > bufferMaxLevel then
+                bufferMaxLevel <- absLevel
+            state.AvgLevel <- state.AvgLevel + absLevel
+            state.SampleCount <- state.SampleCount + 1
+
+        state.CurrentLevel <- bufferMaxLevel
+
+        // Call level update callback
+        match onLevelUpdate with
+        | Some callback -> callback bufferMaxLevel
+        | None -> ()
+    )
+
+    // Recording stopped handler
+    waveIn.RecordingStopped.Add(fun _ ->
+        state.RecordingStopped.Set() |> ignore
+    )
+
+    waveIn.StartRecording()
+    Logger.info "Test recording started"
+
+    state
+
+// Stop test recording and return statistics (currentLevel, maxLevel, avgLevel)
+let stopTestRecording (state: TestRecordingState) : (float32 * float32 * float32) =
+    state.WaveIn.StopRecording()
+    state.RecordingStopped.WaitOne(1000) |> ignore
+    state.WaveIn.Dispose()
+    state.RecordingStopped.Dispose()
+
+    let avgLevelNormalized =
+        if state.SampleCount > 0 then
+            state.AvgLevel / float32 state.SampleCount
+        else
+            0.0f
+
+    Logger.info (sprintf "Test recording stopped - Max: %.3f, Avg: %.3f" state.MaxLevel avgLevelNormalized)
+
+    // Return (currentLevel, maxLevel, avgLevel)
+    (state.CurrentLevel, state.MaxLevel, avgLevelNormalized)

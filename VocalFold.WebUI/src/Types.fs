@@ -23,8 +23,10 @@ type AppSettings = {
     RecordingDuration: int
     TypingSpeed: string
     StartWithWindows: bool
+    KeywordsFilePath: string option
     KeywordReplacements: KeywordReplacement list
     Categories: KeywordCategory list
+    SelectedMicrophoneIndex: int option
 }
 
 type AppStatus = {
@@ -42,6 +44,7 @@ type Page =
     | GeneralSettings
     | KeywordSettings
     | About
+    | Changelog
 
 type LoadingState<'T> =
     | NotStarted
@@ -64,6 +67,24 @@ type KeywordsPathInfo = {
     CurrentPath: string
     DefaultPath: string
     IsDefault: bool
+}
+
+type MicrophoneDevice = {
+    Index: int
+    Name: string
+    Channels: int
+    IsDefault: bool
+}
+
+type MicrophoneTestStatus =
+    | Idle
+    | Testing
+    | Stopped
+
+type MicrophoneTestResult = {
+    CurrentLevel: float
+    MaxLevel: float
+    AvgLevel: float
 }
 
 type Model = {
