@@ -42,6 +42,7 @@ type Page =
     | GeneralSettings
     | KeywordSettings
     | About
+    | Changelog
 
 type LoadingState<'T> =
     | NotStarted

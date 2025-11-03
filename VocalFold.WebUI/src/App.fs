@@ -380,6 +380,11 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                         prop.children [
                                             Html.button [
                                                 prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth text-secondary font-bold"
+                                                prop.text "Changelog"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage Changelog))
+                                            ]
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth text-secondary font-bold"
                                                 prop.text "About"
                                                 prop.onClick (fun _ -> dispatch (NavigateToPage About))
                                             ]
@@ -403,6 +408,8 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                 Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey model.KeywordsPath model.EditingKeywordsPath dispatch
                             | KeywordSettings ->
                                 Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
+                            | Changelog ->
+                                Components.Changelog.view dispatch
                             | About ->
                                 Components.About.view dispatch
                         ]
