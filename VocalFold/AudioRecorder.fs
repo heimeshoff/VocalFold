@@ -143,12 +143,7 @@ let recordAudio (maxDurationSeconds: int) (deviceNumber: int option) : Recording
 
 // Calculate frequency spectrum from audio samples (5 bands for 5 bars)
 let private calculateSpectrum (samples: float32[]) : float32[] =
-    // Debug: Check if we have actual audio data
-    let maxSample = if samples.Length > 0 then samples |> Array.map abs |> Array.max else 0.0f
-    Logger.debug (sprintf "calculateSpectrum called with %d samples, max amplitude: %.4f" samples.Length maxSample)
-
     if samples.Length < 256 then
-        Logger.debug "Not enough samples for FFT (need 256)"
         Array.zeroCreate 5
     else
         // Use 256 samples for FFT (must be power of 2)
@@ -160,10 +155,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
         for i in 0 .. fftLength - 1 do
             if startIdx + i < samples.Length then
                 fftBuffer.[i] <- Complex(X = samples.[startIdx + i], Y = 0.0f)
-
-        // Debug: Check what's in the FFT buffer before windowing
-        let bufferMax = fftBuffer |> Array.map (fun c -> abs c.X) |> Array.max
-        Logger.debug (sprintf "FFT buffer filled, max value before windowing: %.4f" bufferMax)
 
         // Apply Hamming window to reduce spectral leakage
         for i in 0 .. fftLength - 1 do
@@ -203,9 +194,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
             if binsInBand > 0 then
                 bands.[bandIdx] <- float32 (bandEnergy / float binsInBand)
 
-            // Debug: Log band calculation
-            Logger.debug (sprintf "Band %d: %d bins, energy=%.4f, avg=%.4f" bandIdx binsInBand bandEnergy bands.[bandIdx])
-
         // Find max value for auto-scaling
         let maxBand = bands |> Array.max
 
@@ -216,10 +204,6 @@ let private calculateSpectrum (samples: float32[]) : float32[] =
                 bands |> Array.map (fun x -> min 1.0f ((x / maxBand) * 1.5f))  // Auto-scale + 50% boost
             else
                 Array.zeroCreate 5
-
-        // Debug: Log raw and normalized values
-        Logger.debug (sprintf "FFT Bands (raw): [%.4f, %.4f, %.4f, %.4f, %.4f] max=%.4f" bands.[0] bands.[1] bands.[2] bands.[3] bands.[4] maxBand)
-        Logger.debug (sprintf "FFT Bands (norm): [%.3f, %.3f, %.3f, %.3f, %.3f]" normalized.[0] normalized.[1] normalized.[2] normalized.[3] normalized.[4])
 
         normalized
 
@@ -332,10 +316,6 @@ let startRecording (deviceNumber: int option) (onLevelUpdate: (float32 -> unit) 
                     range.ToArray()
                 else
                     state.RecordedSamples.ToArray()
-
-            // Debug: Check sample data
-            let sampleMax = if recentSamples.Length > 0 then recentSamples |> Array.map abs |> Array.max else 0.0f
-            Logger.debug (sprintf "Passing %d samples to FFT, max: %.4f" recentSamples.Length sampleMax)
 
             let spectrum = calculateSpectrum recentSamples
             callback spectrum
