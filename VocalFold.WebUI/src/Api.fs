@@ -46,6 +46,7 @@ let appSettingsDecoder: Decoder<AppSettings> =
         RecordingDuration = get.Required.Field "recordingDuration" Decode.int
         TypingSpeed = get.Required.Field "typingSpeed" Decode.string
         StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
+        KeywordsFilePath = get.Optional.Field "keywordsFilePath" Decode.string
         // Phase 15: Keywords are now in external file, these are deprecated but kept for backward compatibility
         KeywordReplacements = get.Optional.Field "keywordReplacements" (Decode.list keywordReplacementDecoder) |> Option.defaultValue []
         Categories = get.Optional.Field "categories" (Decode.list keywordCategoryDecoder) |> Option.defaultValue []
@@ -53,12 +54,13 @@ let appSettingsDecoder: Decoder<AppSettings> =
 
 let appSettingsEncoder (settings: AppSettings) =
     Encode.object [
-        "hotkeyKey", Encode.uint32 settings.HotkeyKey
-        "hotkeyModifiers", Encode.uint32 settings.HotkeyModifiers
+        "hotkeyKey", Encode.int (int settings.HotkeyKey)
+        "hotkeyModifiers", Encode.int (int settings.HotkeyModifiers)
         "modelSize", Encode.string settings.ModelSize
         "recordingDuration", Encode.int settings.RecordingDuration
         "typingSpeed", Encode.string settings.TypingSpeed
         "startWithWindows", Encode.bool settings.StartWithWindows
+        "keywordsFilePath", (match settings.KeywordsFilePath with | Some p -> Encode.string p | None -> Encode.nil)
         "keywordReplacements", Encode.list (List.map keywordReplacementEncoder settings.KeywordReplacements)
         "categories", Encode.list (List.map keywordCategoryEncoder settings.Categories)
     ]
@@ -118,6 +120,8 @@ let updateSettings (settings: AppSettings) : JS.Promise<Result<unit, string>> =
     async {
         try
             let json = Encode.toString 0 (appSettingsEncoder settings)
+            Browser.Dom.console.log("Sending settings update:", json)
+
             let! response =
                 Http.request (baseUrl + "/api/settings")
                 |> Http.method PUT
@@ -125,10 +129,14 @@ let updateSettings (settings: AppSettings) : JS.Promise<Result<unit, string>> =
                 |> Http.header (Headers.contentType "application/json")
                 |> Http.send
 
+            Browser.Dom.console.log("Response status code:", response.statusCode)
+            Browser.Dom.console.log("Response text:", response.responseText)
+
             match response.statusCode with
             | 200 -> return Result.Ok ()
             | code -> return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
         with ex ->
+            Browser.Dom.console.error("Exception during updateSettings:", ex)
             return Result.Error (sprintf "Failed to update settings: %s" ex.Message)
     } |> Async.StartAsPromise
 

@@ -23,6 +23,7 @@ type AppSettings = {
     RecordingDuration: int
     TypingSpeed: string
     StartWithWindows: bool
+    KeywordsFilePath: string option
     KeywordReplacements: KeywordReplacement list
     Categories: KeywordCategory list
 }

@@ -85,15 +85,24 @@ let getSettingsHandler: HttpHandler =
 let updateSettingsHandler (config: ServerConfig) : HttpHandler =
     fun (next: HttpFunc) (ctx: HttpContext) ->
         task {
-            let! newSettings = ctx.BindJsonAsync<Settings.AppSettings>()
+            try
+                let! newSettings = ctx.BindJsonAsync<Settings.AppSettings>()
 
-            // Save settings to disk
-            Settings.save newSettings |> ignore
+                // Save settings to disk
+                let saveResult = Settings.save newSettings
 
-            // Notify the application of settings change
-            config.OnSettingsChanged newSettings
-
-            return! json {| success = true |} next ctx
+                if saveResult then
+                    // Notify the application of settings change
+                    config.OnSettingsChanged newSettings
+                    return! json {| success = true |} next ctx
+                else
+                    ctx.SetStatusCode 500
+                    return! json {| error = "Failed to save settings to disk" |} next ctx
+            with
+            | ex ->
+                Logger.error (sprintf "Error in updateSettingsHandler: %s\n%s" ex.Message ex.StackTrace)
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error updating settings: %s" ex.Message |} next ctx
         }
 
 /// Handler for GET /api/keywords
