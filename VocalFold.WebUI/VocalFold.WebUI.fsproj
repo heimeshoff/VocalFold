@@ -10,6 +10,7 @@
     <Compile Include="src/Components/Card.fs" />
     <Compile Include="src/Components/Button.fs" />
     <Compile Include="src/Components/Dashboard.fs" />
+    <Compile Include="src/Components/MicrophoneSettings.fs" />
     <Compile Include="src/Components/SystemSettings.fs" />
     <Compile Include="src/Components/GeneralSettings.fs" />
     <Compile Include="src/Components/KeywordManager.fs" />

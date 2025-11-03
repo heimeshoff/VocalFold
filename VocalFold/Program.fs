@@ -73,6 +73,21 @@ let main argv =
             Logger.info (sprintf "   Loaded %d keyword replacements in %d categories"
                 currentKeywordData.KeywordReplacements.Length
                 currentKeywordData.Categories.Length)
+
+            // Log microphone selection
+            match currentSettings.SelectedMicrophoneIndex with
+            | Some idx -> Logger.info (sprintf "   Microphone: Device %d" idx)
+            | None -> Logger.info "   Microphone: Default device"
+
+            // Validate selected microphone is still available
+            match currentSettings.SelectedMicrophoneIndex with
+            | Some idx when not (AudioRecorder.isDeviceIndexValid idx) ->
+                Logger.warning (sprintf "Selected microphone (index %d) not found, falling back to default" idx)
+                currentSettings <- { currentSettings with SelectedMicrophoneIndex = None }
+                Settings.save currentSettings |> ignore
+                Logger.info "Settings updated to use default microphone"
+            | _ -> ()
+
             if isFirstRun then
                 Logger.info "First run detected - will open settings after initialization"
 
@@ -219,6 +234,7 @@ let main argv =
                             OnSettingsChanged = onSettingsChanged
                             OnKeywordsChanged = onKeywordsChanged
                             RestartFileWatcher = restartFileWatcher
+                            WhisperService = whisperService
                         }
 
                         let state = WebServer.start serverConfig |> Async.RunSynchronously
@@ -259,9 +275,11 @@ let main argv =
                                     Logger.debug "Switching overlay back to recording state (real-time)"
                                     overlayManager.ShowReady()
 
-                            let state = AudioRecorder.startRecording (Some 0) (Some onLevelUpdate) (Some onSpectrumUpdate) (Some onMuteStateChanged)
+                            let state = AudioRecorder.startRecording currentSettings.SelectedMicrophoneIndex (Some onLevelUpdate) (Some onSpectrumUpdate) (Some onMuteStateChanged)
                             currentRecording <- Some state
-                            Logger.info "Recording started successfully"
+                            match currentSettings.SelectedMicrophoneIndex with
+                            | Some idx -> Logger.info (sprintf "Recording started successfully on device %d" idx)
+                            | None -> Logger.info "Recording started successfully on default device"
                         with
                         | ex ->
                             Logger.logException ex "Recording failed to start"

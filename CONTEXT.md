@@ -17,11 +17,11 @@ Windows desktop app that transcribes voice to text using Whisper.NET AI. Press C
 3. **TASKS.md** - Implementation roadmap
 
 ### Current Status
-**Phase**: All Phases Complete (Phases 1-14) ✅
-**Last Completed**: Phase 13 & Phase 14 - All tasks completed
+**Phase**: Phase 16 - Microphone Setup (In Planning) 📋
+**Last Completed**: Phase 14 - AMD GPU Support via Vulkan
 **Status**: Full-featured voice-to-text application with web UI, keyword categorization, and multi-GPU support
 
-**All Phases Complete**: 14 of 14 phases completed (100%)
+**Phases Complete**: 14 of 16 phases completed (87.5%)
 
 - ✅ **Phases 1-11 COMPLETE - Core Functionality**:
   - Project foundation and module implementation
@@ -64,6 +64,24 @@ Windows desktop app that transcribes voice to text using Whisper.NET AI. Press C
   - Automatic runtime selection: CUDA → Vulkan → CPU
   - Support for AMD Radeon RX 6000+, Intel Arc GPUs
   - Build successful with Vulkan runtime included
+
+- ⬜ **Phase 15 - External Keyword Configuration File** (Not Started):
+  - External keywords.json file for cloud sync
+  - Configurable file path in settings
+  - Real-time file watching and auto-reload
+  - Multi-computer synchronization support
+  - Export/import keywords to different locations
+  - Migration from embedded to external format
+
+- 📋 **Phase 16 - Microphone Setup** (In Planning):
+  - Microphone device selection
+  - Microphone enumeration (list all devices)
+  - Microphone test feature with visualization
+  - Real-time audio level feedback
+  - REST API for microphone management
+  - Web UI card for microphone setup
+  - Automatic fallback to default device
+  - Integration with recording flow
 
 **Build Output**: `VocalFold.WebUI/dist/` (production-ready)
 

@@ -25,6 +25,7 @@ type ServerConfig = {
     OnSettingsChanged: Settings.AppSettings -> unit
     OnKeywordsChanged: Settings.KeywordData -> unit
     RestartFileWatcher: string -> unit
+    WhisperService: TranscriptionService.WhisperService
 }
 
 type ServerState = {
@@ -434,6 +435,169 @@ let exportKeywordsToFileHandler (config: ServerConfig) : HttpHandler =
         }
 
 // ============================================================================
+// Microphone API Handlers
+// ============================================================================
+
+// Mutable state to hold active test recording (only one test at a time)
+let mutable currentTestState: AudioRecorder.TestRecordingState option = None
+
+// Global mutable state for server config (needed to access whisper service)
+let mutable serverConfig: ServerConfig option = None
+
+/// Handler for GET /api/microphones - List all available microphones
+let getMicrophonesHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                let devices = AudioRecorder.getAvailableDevices()
+
+                // Convert to JSON-friendly format
+                let devicesJson =
+                    devices
+                    |> List.map (fun d ->
+                        {|
+                            index = d.Index
+                            name = d.Name
+                            channels = d.Channels
+                            isDefault = d.IsDefault
+                        |})
+
+                return! json devicesJson next ctx
+            with
+            | ex ->
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error listing microphones: %s" ex.Message |} next ctx
+        }
+
+/// Handler for POST /api/microphones/test/start - Start microphone test
+let startMicrophoneTestHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                let! body = ctx.BindJsonAsync<{| deviceIndex: int option |}>()
+
+                // Stop any existing test
+                match currentTestState with
+                | Some state ->
+                    try
+                        AudioRecorder.stopTestRecording state |> ignore
+                    with
+                    | _ -> ()
+                | None -> ()
+
+                // Start new test
+                let state = AudioRecorder.startTestRecording body.deviceIndex None
+                currentTestState <- Some state
+
+                return! json {| status = "started"; deviceIndex = body.deviceIndex |} next ctx
+            with
+            | ex ->
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error starting test: %s" ex.Message |} next ctx
+        }
+
+/// Handler for POST /api/microphones/test/stop - Stop microphone test and get results
+let stopMicrophoneTestHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                match currentTestState with
+                | Some state ->
+                    let (current, max, avg) = AudioRecorder.stopTestRecording state
+                    currentTestState <- None
+
+                    return! json {|
+                        status = "stopped"
+                        currentLevel = current
+                        maxLevel = max
+                        avgLevel = avg
+                    |} next ctx
+                | None ->
+                    ctx.SetStatusCode 400
+                    return! json {| error = "No active test recording" |} next ctx
+            with
+            | ex ->
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error stopping test: %s" ex.Message |} next ctx
+        }
+
+/// Handler for GET /api/microphones/test/levels - Get current audio levels
+let getMicrophoneLevelsHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                match currentTestState with
+                | Some state ->
+                    return! json {|
+                        currentLevel = state.CurrentLevel
+                        maxLevel = state.MaxLevel
+                        avgLevel = if state.SampleCount > 0 then state.AvgLevel / float32 state.SampleCount else 0.0f
+                    |} next ctx
+                | None ->
+                    return! json {|
+                        currentLevel = 0.0f
+                        maxLevel = 0.0f
+                        avgLevel = 0.0f
+                    |} next ctx
+            with
+            | ex ->
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error getting levels: %s" ex.Message |} next ctx
+        }
+
+/// Handler for POST /api/microphones/test/transcribe - Test microphone with transcription
+let transcribeMicrophoneTestHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                let! body = ctx.BindJsonAsync<{| deviceIndex: int option; durationSeconds: int option |}>()
+                let duration = body.durationSeconds |> Option.defaultValue 5
+
+                Logger.info (sprintf "Starting transcription test (duration: %d seconds)" duration)
+
+                // Record audio
+                let recording = AudioRecorder.recordAudio duration body.deviceIndex
+                Logger.info (sprintf "Recorded %d samples" recording.Samples.Length)
+
+                // Check if muted
+                if recording.IsMuted then
+                    Logger.warning "Microphone is muted or audio level too low"
+                    return! json {|
+                        status = "error"
+                        error = "Microphone is muted or audio level too low"
+                        transcription = ""
+                    |} next ctx
+                elif recording.Samples.Length = 0 then
+                    Logger.warning "No audio captured"
+                    return! json {|
+                        status = "error"
+                        error = "No audio captured"
+                        transcription = ""
+                    |} next ctx
+                else
+                    // Transcribe
+                    match serverConfig with
+                    | Some config ->
+                        Logger.info "Transcribing audio..."
+                        let! transcription = config.WhisperService.Transcribe(recording.Samples) |> Async.StartAsTask
+                        Logger.info (sprintf "Transcription: %s" transcription)
+
+                        return! json {|
+                            status = "success"
+                            transcription = transcription
+                            sampleCount = recording.Samples.Length
+                        |} next ctx
+                    | None ->
+                        ctx.SetStatusCode 500
+                        return! json {| error = "Whisper service not available" |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Error during transcription test"
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error during transcription test: %s" ex.Message |} next ctx
+        }
+
+// ============================================================================
 // Routing
 // ============================================================================
 
@@ -470,6 +634,13 @@ let webApp (config: ServerConfig) : HttpHandler =
                 routef "/categories/%s/state" (fun name ->
                     PUT >=> toggleCategoryStateHandler config name
                 )
+
+                // Microphone endpoints
+                GET  >=> route "/microphones" >=> getMicrophonesHandler
+                POST >=> route "/microphones/test/start" >=> startMicrophoneTestHandler
+                POST >=> route "/microphones/test/stop" >=> stopMicrophoneTestHandler
+                GET  >=> route "/microphones/test/levels" >=> getMicrophoneLevelsHandler
+                POST >=> route "/microphones/test/transcribe" >=> transcribeMicrophoneTestHandler
             ]
         )
 
@@ -545,6 +716,9 @@ let configureServices (services: IServiceCollection) =
 /// Start the web server on a random available port
 let start (config: ServerConfig) : Async<ServerState> =
     async {
+        // Store config globally so handlers can access it
+        serverConfig <- Some config
+
         let port = findAvailablePort()
         let cts = new CancellationTokenSource()
 

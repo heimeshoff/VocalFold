@@ -133,6 +133,10 @@ type AppSettings = {
     /// DEPRECATED: Categories list (for migration from old format)
     [<JsonPropertyName("categories")>]
     Categories: KeywordCategory list option
+
+    /// Selected microphone device index (None = default device)
+    [<JsonPropertyName("selectedMicrophoneIndex")>]
+    SelectedMicrophoneIndex: int option
 }
 
 /// Default categories
@@ -161,6 +165,7 @@ let defaultSettings = {
     KeywordsFilePath = None  // Use default keywords file location
     KeywordReplacements = None  // DEPRECATED - for migration only
     Categories = None  // DEPRECATED - for migration only
+    SelectedMicrophoneIndex = None  // Use default microphone
 }
 
 /// Get the typing speed from settings

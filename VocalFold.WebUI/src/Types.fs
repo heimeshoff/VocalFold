@@ -26,6 +26,7 @@ type AppSettings = {
     KeywordsFilePath: string option
     KeywordReplacements: KeywordReplacement list
     Categories: KeywordCategory list
+    SelectedMicrophoneIndex: int option
 }
 
 type AppStatus = {
@@ -66,6 +67,24 @@ type KeywordsPathInfo = {
     CurrentPath: string
     DefaultPath: string
     IsDefault: bool
+}
+
+type MicrophoneDevice = {
+    Index: int
+    Name: string
+    Channels: int
+    IsDefault: bool
+}
+
+type MicrophoneTestStatus =
+    | Idle
+    | Testing
+    | Stopped
+
+type MicrophoneTestResult = {
+    CurrentLevel: float
+    MaxLevel: float
+    AvgLevel: float
 }
 
 type Model = {
