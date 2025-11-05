@@ -127,6 +127,10 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
+      - name: Restore .NET tools (Fable)
+        run: dotnet tool restore
+        working-directory: VocalFold.WebUI
+
       - name: Build WebUI
         run: npm run build:webui
 
