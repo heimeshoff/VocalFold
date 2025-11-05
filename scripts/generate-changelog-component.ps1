@@ -99,7 +99,7 @@ foreach ($match in $matches) {
         # Parse list items (lines starting with -)
         $items = $categoryBody -split '\n' | Where-Object { $_ -match '^\s*-\s+(.+)$' } | ForEach-Object {
             if ($_ -match '^\s*-\s+(.+)$') {
-                $matches[0].Groups[1].Value
+                $Matches[1]
             }
         }
 
