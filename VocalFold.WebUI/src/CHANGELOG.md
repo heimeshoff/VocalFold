@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] - 2025-11-05
+
+### Added
+- Automatic Releases on GitHub when a new Version is tagged
+
+
 ## [1.1.0] - 2025-11-03
 
 ### Added
@@ -34,6 +40,6 @@ All notable changes to this project will be documented in this file.
 - General and system settings management
 
 ---
-
+[1.2.2]: https://github.com/heimeshoff/VocalFold/releases/tag/v1.2.2
 [1.1.0]: https://github.com/heimeshoff/VocalFold/releases/tag/v1.1.0
 [1.0.0]: https://github.com/heimeshoff/VocalFold/releases/tag/v-1.0.0
