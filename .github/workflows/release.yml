@@ -1,0 +1,240 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on tags like v1.2.0, v1.2.3-rc1, etc.
+
+permissions:
+  contents: write # Needed to create releases and commit back to repo
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    env:
+      CONFIGURATION: Release
+      RUNTIME: win-x64
+      PUBLISH_DIR: ${{ github.workspace }}\publish
+      DIST_DIR: ${{ runner.temp }}\dist
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for changelog generation
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            8.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Extract version from tag
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -match '^v?(.+)$') {
+            $version = $Matches[1]
+          } else {
+            $version = $tag
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Extracted version: $version"
+
+      - name: Get previous tag for changelog
+        id: previous_tag
+        shell: pwsh
+        run: |
+          # Get all tags sorted by version, exclude current tag
+          $currentTag = '${{ github.ref_name }}'
+          $tags = git tag --sort=-v:refname | Where-Object { $_ -ne $currentTag }
+
+          if ($tags) {
+            $previousTag = $tags | Select-Object -First 1
+            "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
+            Write-Host "Previous tag: $previousTag"
+          } else {
+            "previous_tag=" >> $env:GITHUB_OUTPUT
+            Write-Host "No previous tag found"
+          }
+
+      - name: Generate CHANGELOG.md from commits
+        shell: pwsh
+        run: |
+          $previousTag = '${{ steps.previous_tag.outputs.previous_tag }}'
+          if ([string]::IsNullOrEmpty($previousTag)) {
+            # No previous tag, generate from all commits
+            .\scripts\generate-changelog.ps1 -Version '${{ steps.meta.outputs.version }}'
+          } else {
+            # Generate from commits since previous tag
+            .\scripts\generate-changelog.ps1 -Version '${{ steps.meta.outputs.version }}' -PreviousTag $previousTag
+          }
+
+      - name: Generate Changelog.fs component
+        shell: pwsh
+        run: |
+          .\scripts\generate-changelog-component.ps1
+
+      - name: Update version numbers
+        shell: pwsh
+        run: |
+          .\scripts\update-versions.ps1 -Version '${{ steps.meta.outputs.version }}'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit changelog and version updates
+        shell: pwsh
+        run: |
+          # Add updated files
+          git add VocalFold.WebUI/src/CHANGELOG.md
+          git add VocalFold.WebUI/src/Components/Changelog.fs
+          git add package.json
+          git add installer.iss
+          git add Directory.Build.props
+
+          # Check if there are changes to commit
+          $status = git status --porcelain
+          if ($status) {
+            git commit -m "chore: update changelog and version to ${{ steps.meta.outputs.version }} [skip ci]"
+
+            # Push to the tag's branch (or create a detached commit)
+            # Since we're on a tag, we need to update the branch the tag came from
+            $branch = git branch -r --contains ${{ github.ref_name }} | Select-Object -First 1 | ForEach-Object { $_.Trim() -replace 'origin/', '' }
+
+            if ($branch) {
+              Write-Host "Pushing to branch: $branch"
+              git push origin HEAD:$branch
+            } else {
+              Write-Host "No branch found, skipping push"
+            }
+          } else {
+            Write-Host "No changes to commit"
+          }
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Build WebUI
+        run: npm run build:webui
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.fsproj', '**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore .NET dependencies
+        run: dotnet restore VocalFold/VocalFold.fsproj
+
+      - name: Build .NET application
+        run: |
+          dotnet build VocalFold/VocalFold.fsproj `
+            --configuration $env:CONFIGURATION `
+            -p:ContinuousIntegrationBuild=true `
+            -p:Version=${{ steps.meta.outputs.version }}
+
+      - name: Publish self-contained application
+        run: |
+          dotnet publish VocalFold/VocalFold.fsproj `
+            -c $env:CONFIGURATION `
+            -r $env:RUNTIME `
+            -p:PublishSingleFile=true `
+            -p:SelfContained=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:PublishTrimmed=false `
+            -p:Version=${{ steps.meta.outputs.version }} `
+            -o "$env:PUBLISH_DIR"
+
+      - name: Copy WebUI dist to publish directory
+        shell: pwsh
+        run: |
+          $webuiDist = "${{ github.workspace }}\VocalFold.WebUI\dist"
+          $targetDir = "$env:PUBLISH_DIR\VocalFold.WebUI\dist"
+
+          if (Test-Path $webuiDist) {
+            New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+            Copy-Item -Path "$webuiDist\*" -Destination $targetDir -Recurse -Force
+            Write-Host "✅ WebUI dist files copied to publish directory"
+          } else {
+            Write-Warning "WebUI dist directory not found at: $webuiDist"
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:DIST_DIR" | Out-Null
+
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (-not (Test-Path $iscc)) {
+            Write-Error "Inno Setup compiler not found at: $iscc"
+            exit 1
+          }
+
+          Write-Host "Building installer with version ${{ steps.meta.outputs.version }}..."
+
+          & $iscc installer.iss `
+            /DAppVersion=${{ steps.meta.outputs.version }} `
+            /DSourceDir="$env:PUBLISH_DIR" `
+            /DOutputDir="$env:DIST_DIR"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Inno Setup compilation failed"
+            exit 1
+          }
+
+          Write-Host "✅ Installer built successfully"
+
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          $zipPath = "$env:DIST_DIR\VocalFold-${{ steps.meta.outputs.version }}.zip"
+          Compress-Archive -Path "$env:PUBLISH_DIR\*" -DestinationPath $zipPath -Force
+          Write-Host "✅ ZIP archive created: $zipPath"
+
+      - name: List artifacts
+        shell: pwsh
+        run: |
+          Write-Host "Artifacts in $env:DIST_DIR:"
+          Get-ChildItem $env:DIST_DIR | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1MB, 2)) MB)" }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: VocalFold ${{ steps.meta.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          body_path: VocalFold.WebUI/src/CHANGELOG.md
+          files: |
+            ${{ env.DIST_DIR }}\*.exe
+            ${{ env.DIST_DIR }}\*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocalFold-${{ steps.meta.outputs.version }}
+          path: |
+            ${{ env.DIST_DIR }}\*.exe
+            ${{ env.DIST_DIR }}\*.zip
+          retention-days: 30

@@ -2,11 +2,13 @@
 ; https://jrsoftware.org/isinfo.php
 
 #define MyAppName "VocalFold"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion GetStringParam("AppVersion", "1.1.0")
 #define MyAppPublisher "VocalFold"
 #define MyAppURL "https://github.com/heimeshoff/VocalFold"
 #define MyAppExeName "VocalFold.exe"
 #define MyAppDescription "Voice to Text Application with AI-powered transcription"
+#define SourceDir GetStringParam("SourceDir", "deploy\VocalFold")
+#define OutputDir GetStringParam("OutputDir", "deploy")
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -23,8 +25,8 @@ DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-OutputDir=deploy
-OutputBaseFilename=VocalFold-Setup
+OutputDir={#OutputDir}
+OutputBaseFilename=VocalFold-Setup-{#MyAppVersion}
 SetupIconFile=logo.ico
 Compression=lzma
 SolidCompression=yes
@@ -44,7 +46,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startmenuicon"; Description: "Create Start Menu shortcut"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "deploy\VocalFold\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
