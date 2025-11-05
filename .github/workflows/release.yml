@@ -59,36 +59,29 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Extracted version: $version"
 
-      - name: Get previous tag for changelog
-        id: previous_tag
+      - name: Verify CHANGELOG.md exists and has version entry
         shell: pwsh
         run: |
-          # Get all tags sorted by version, exclude current tag
-          $currentTag = '${{ github.ref_name }}'
-          $tags = git tag --sort=-v:refname | Where-Object { $_ -ne $currentTag }
-
-          if ($tags) {
-            $previousTag = $tags | Select-Object -First 1
-            "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
-            Write-Host "Previous tag: $previousTag"
-          } else {
-            "previous_tag=" >> $env:GITHUB_OUTPUT
-            Write-Host "No previous tag found"
+          $changelogPath = "VocalFold.WebUI\src\CHANGELOG.md"
+          if (-not (Test-Path $changelogPath)) {
+            Write-Error "CHANGELOG.md not found at: $changelogPath"
+            Write-Error "Please create and update CHANGELOG.md manually before creating a release tag."
+            exit 1
           }
 
-      - name: Generate CHANGELOG.md from commits
-        shell: pwsh
-        run: |
-          $previousTag = '${{ steps.previous_tag.outputs.previous_tag }}'
-          if ([string]::IsNullOrEmpty($previousTag)) {
-            # No previous tag, generate from all commits
-            .\scripts\generate-changelog.ps1 -Version '${{ steps.meta.outputs.version }}'
-          } else {
-            # Generate from commits since previous tag
-            .\scripts\generate-changelog.ps1 -Version '${{ steps.meta.outputs.version }}' -PreviousTag $previousTag
+          $changelogContent = Get-Content $changelogPath -Raw
+          $version = '${{ steps.meta.outputs.version }}'
+
+          # Check if the version exists in the changelog
+          if ($changelogContent -notmatch "\[$version\]") {
+            Write-Error "Version [$version] not found in CHANGELOG.md"
+            Write-Error "Please add a changelog entry for version $version before creating the release tag."
+            exit 1
           }
 
-      - name: Generate Changelog.fs component
+          Write-Host "✅ CHANGELOG.md contains entry for version $version"
+
+      - name: Generate Changelog.fs component from CHANGELOG.md
         shell: pwsh
         run: |
           .\scripts\generate-changelog-component.ps1
@@ -103,11 +96,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Commit changelog and version updates
+      - name: Commit generated Changelog.fs and version updates
         shell: pwsh
         run: |
-          # Add updated files
-          git add VocalFold.WebUI/src/CHANGELOG.md
+          # Add only the generated/updated files (not CHANGELOG.md - that's manual)
           git add VocalFold.WebUI/src/Components/Changelog.fs
           git add package.json
           git add installer.iss
@@ -116,7 +108,7 @@ jobs:
           # Check if there are changes to commit
           $status = git status --porcelain
           if ($status) {
-            git commit -m "chore: update changelog and version to ${{ steps.meta.outputs.version }} [skip ci]"
+            git commit -m "chore: update Changelog.fs component and version to ${{ steps.meta.outputs.version }} [skip ci]"
 
             # Push to the tag's branch (or create a detached commit)
             # Since we're on a tag, we need to update the branch the tag came from
