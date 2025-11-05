@@ -15,8 +15,6 @@ jobs:
     env:
       CONFIGURATION: Release
       RUNTIME: win-x64
-      PUBLISH_DIR: ${{ github.workspace }}\publish
-      DIST_DIR: ${{ runner.temp }}\dist
 
     steps:
       - name: Checkout
@@ -24,6 +22,16 @@ jobs:
         with:
           fetch-depth: 0 # Fetch all history for changelog generation
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up environment paths
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish"
+          $distDir = Join-Path $env:RUNNER_TEMP "dist"
+          "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
+          "DIST_DIR=$distDir" >> $env:GITHUB_ENV
+          Write-Host "PUBLISH_DIR=$publishDir"
+          Write-Host "DIST_DIR=$distDir"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
