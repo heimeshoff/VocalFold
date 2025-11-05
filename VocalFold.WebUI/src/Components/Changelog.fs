@@ -20,6 +20,51 @@ let view (dispatch: Msg -> unit) =
                     Html.div [
                         prop.className "prose prose-invert max-w-none"
                         prop.children [
+                            // Version 1.2.2
+                            Html.div [
+                                prop.className "mb-8"
+                                prop.children [
+                                    Html.div [
+                                        prop.className "flex items-baseline gap-3 mb-4"
+                                        prop.children [
+                                            Html.h3 [
+                                                prop.className "text-2xl font-bold text-primary"
+                                                prop.text "[1.2.2]"
+                                            ]
+                                            Html.span [
+                                                prop.className "text-text-secondary"
+                                                prop.text "- 2025-11-05"
+                                            ]
+                                        ]
+                                    ]
+
+                                    Html.div [
+                                        prop.className "space-y-3"
+                                        prop.children [
+                                            Html.div [
+                                                prop.children [
+                                                    Html.h4 [
+                                                        prop.className "text-lg font-semibold text-text-primary mb-2"
+                                                        prop.text "Added"
+                                                    ]
+                                                    Html.ul [
+                                                        prop.className "list-disc list-inside text-text-secondary space-y-1"
+                                                        prop.children [
+                                                            Html.li "Automatic Releases on GitHub when a new Version is tagged"
+                                                        ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                ]
+                            ]
+
+
+                            Html.hr [
+                                prop.className "border-text-secondary/20 my-6"
+                            ]
+
                             // Version 1.1.0
                             Html.div [
                                 prop.className "mb-8"
@@ -95,6 +140,7 @@ let view (dispatch: Msg -> unit) =
                                     ]
                                 ]
                             ]
+
 
                             Html.hr [
                                 prop.className "border-text-secondary/20 my-6"

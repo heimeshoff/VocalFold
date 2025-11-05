@@ -2,7 +2,7 @@
 ; https://jrsoftware.org/isinfo.php
 
 #define MyAppName "VocalFold"
-#define MyAppVersion GetStringParam("AppVersion", "1.1.0")
+#define MyAppVersion GetStringParam("AppVersion", "1.2.2")
 #define MyAppPublisher "VocalFold"
 #define MyAppURL "https://github.com/heimeshoff/VocalFold"
 #define MyAppExeName "VocalFold.exe"
