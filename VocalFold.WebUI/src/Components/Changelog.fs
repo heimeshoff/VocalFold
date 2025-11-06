@@ -20,7 +20,7 @@ let view (dispatch: Msg -> unit) =
                     Html.div [
                         prop.className "prose prose-invert max-w-none"
                         prop.children [
-                            // Version 1.2.2
+                            // Version 1.2.3
                             Html.div [
                                 prop.className "mb-8"
                                 prop.children [
@@ -29,11 +29,11 @@ let view (dispatch: Msg -> unit) =
                                         prop.children [
                                             Html.h3 [
                                                 prop.className "text-2xl font-bold text-primary"
-                                                prop.text "[1.2.2]"
+                                                prop.text "[1.2.3]"
                                             ]
                                             Html.span [
                                                 prop.className "text-text-secondary"
-                                                prop.text "- 2025-11-05"
+                                                prop.text "- 2025-11-06"
                                             ]
                                         ]
                                     ]

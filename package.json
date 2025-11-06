@@ -1,6 +1,6 @@
 {
   "name": "vocalfold-workspace",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "VocalFold - Voice to Text Application with Web UI",
   "private": true,
   "scripts": {
