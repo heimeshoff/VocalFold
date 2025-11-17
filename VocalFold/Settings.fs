@@ -53,6 +53,62 @@ type KeywordData = {
     Version: string
 }
 
+/// Application or URL to launch
+[<CLIMutable>]
+type LaunchTarget = {
+    /// Display name for this target
+    [<JsonPropertyName("name")>]
+    Name: string
+
+    /// Type of target: "executable", "url", or "folder"
+    [<JsonPropertyName("type")>]
+    Type: string
+
+    /// Path to executable, URL, or folder path
+    [<JsonPropertyName("path")>]
+    Path: string
+
+    /// Optional command-line arguments (for executables)
+    [<JsonPropertyName("arguments")>]
+    Arguments: string option
+
+    /// Optional working directory (for executables)
+    [<JsonPropertyName("workingDirectory")>]
+    WorkingDirectory: string option
+}
+
+/// Custom "open" command configuration
+[<CLIMutable>]
+type OpenCommand = {
+    /// The keyword to trigger this command (e.g., "browser", "workspace")
+    [<JsonPropertyName("keyword")>]
+    Keyword: string
+
+    /// Optional description
+    [<JsonPropertyName("description")>]
+    Description: string option
+
+    /// List of targets to launch (one or more)
+    [<JsonPropertyName("targets")>]
+    Targets: LaunchTarget list
+
+    /// Optional delay between launching multiple targets (milliseconds)
+    [<JsonPropertyName("launchDelay")>]
+    LaunchDelay: int option
+}
+
+/// Open commands data (stored in separate file)
+[<CLIMutable>]
+type OpenCommandsData = {
+    /// List of custom open commands
+    [<JsonPropertyName("openCommands")>]
+    OpenCommands: OpenCommand list
+
+    /// Schema version for future migrations
+    [<JsonPropertyName("version")>]
+    Version: string
+}
+
 /// Typing speed configuration
 type TypingSpeed =
     | Fast      // 0ms delay
@@ -126,6 +182,10 @@ type AppSettings = {
     [<JsonPropertyName("keywordsFilePath")>]
     KeywordsFilePath: string option
 
+    /// Path to external open commands file (if None, uses default location)
+    [<JsonPropertyName("openCommandsFilePath")>]
+    OpenCommandsFilePath: string option
+
     /// DEPRECATED: Keyword replacements list (for migration from old format)
     [<JsonPropertyName("keywordReplacements")>]
     KeywordReplacements: KeywordReplacement list option
@@ -154,6 +214,12 @@ let defaultKeywordData = {
     Version = "1.0"
 }
 
+/// Default open commands data
+let defaultOpenCommandsData = {
+    OpenCommands = []
+    Version = "1.0"
+}
+
 /// Default settings
 let defaultSettings = {
     HotkeyKey = 0x5Bu  // Left Win key
@@ -163,6 +229,7 @@ let defaultSettings = {
     TypingSpeedStr = "normal"  // Default to normal typing speed
     StartWithWindows = false  // Don't start with Windows by default
     KeywordsFilePath = None  // Use default keywords file location
+    OpenCommandsFilePath = None  // Use default open commands file location
     KeywordReplacements = None  // DEPRECATED - for migration only
     Categories = None  // DEPRECATED - for migration only
     SelectedMicrophoneIndex = None  // Use default microphone
@@ -190,6 +257,16 @@ let getKeywordsFilePath (settings: AppSettings) : string =
     match settings.KeywordsFilePath with
     | Some path when not (String.IsNullOrWhiteSpace(path)) -> path
     | _ -> getDefaultKeywordsFilePath()
+
+/// Get the default open commands file path
+let getDefaultOpenCommandsFilePath () =
+    Path.Combine(getSettingsDirectory(), "open-commands.json")
+
+/// Get the open commands file path from settings, or default if not specified
+let getOpenCommandsFilePath (settings: AppSettings) : string =
+    match settings.OpenCommandsFilePath with
+    | Some path when not (String.IsNullOrWhiteSpace(path)) -> path
+    | _ -> getDefaultOpenCommandsFilePath()
 
 /// JSON serializer options
 let private jsonOptions =
@@ -485,3 +562,63 @@ let getHotkeyDisplayName (settings: AppSettings) : string =
         key
     else
         sprintf "%s+%s" modifiers key
+
+/// Validate a launch target
+let validateLaunchTarget (target: LaunchTarget) : string option =
+    if String.IsNullOrWhiteSpace(target.Name) then
+        Some "Target name cannot be empty"
+    elif String.IsNullOrWhiteSpace(target.Type) then
+        Some "Target type cannot be empty"
+    elif target.Type <> "executable" && target.Type <> "url" && target.Type <> "folder" then
+        Some "Target type must be 'executable', 'url', or 'folder'"
+    elif String.IsNullOrWhiteSpace(target.Path) then
+        Some "Target path cannot be empty"
+    else
+        None
+
+/// Validate an open command
+let validateOpenCommand (command: OpenCommand) : string option =
+    if String.IsNullOrWhiteSpace(command.Keyword) then
+        Some "Keyword cannot be empty"
+    elif command.Keyword.ToLowerInvariant() = "settings" then
+        Some "Keyword 'settings' is reserved for built-in command"
+    else
+        // Validate all targets (if any)
+        // Note: Allow commands without targets (user can add them later via UI)
+        command.Targets
+        |> List.tryPick validateLaunchTarget
+
+/// Load open commands from file
+let loadOpenCommands (filePath: string) : OpenCommandsData =
+    try
+        if File.Exists(filePath) then
+            let json = File.ReadAllText(filePath)
+            let data = JsonSerializer.Deserialize<OpenCommandsData>(json, jsonOptions)
+            Logger.info (sprintf "Open commands loaded from: %s" filePath)
+            Logger.info (sprintf "Loaded %d open command(s)" data.OpenCommands.Length)
+            data
+        else
+            Logger.info (sprintf "Open commands file not found at %s, using defaults" filePath)
+            defaultOpenCommandsData
+    with
+    | ex ->
+        Logger.error (sprintf "Error loading open commands from %s: %s - Using default open commands" filePath ex.Message)
+        defaultOpenCommandsData
+
+/// Save open commands to file
+let saveOpenCommands (filePath: string) (data: OpenCommandsData) : Result<unit, string> =
+    try
+        let directory = Path.GetDirectoryName(filePath)
+        if not (Directory.Exists(directory)) then
+            Directory.CreateDirectory(directory) |> ignore
+            Logger.info (sprintf "Created open commands directory: %s" directory)
+
+        let json = JsonSerializer.Serialize(data, jsonOptions)
+        File.WriteAllText(filePath, json)
+        Logger.info (sprintf "Saved %d open command(s) to %s" data.OpenCommands.Length filePath)
+        Ok ()
+    with
+    | ex ->
+        let errorMsg = sprintf "Failed to save open commands: %s" ex.Message
+        Logger.error errorMsg
+        Error errorMsg

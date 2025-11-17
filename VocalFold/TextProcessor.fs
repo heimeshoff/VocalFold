@@ -7,9 +7,53 @@ open System.Text.RegularExpressions
 type ProcessingResult =
     | TypeText of string        // Text should be typed
     | OpenSettings             // Open settings dialog
+    | OpenApplication of Settings.OpenCommand  // Execute custom open command
 
 /// Mutable storage for the last transcribed message
 let mutable private lastTranscription: string option = None
+
+/// Mutable storage for open commands cache
+let mutable private openCommandsCache: Settings.OpenCommandsData option = None
+let mutable private openCommandsFilePath: string option = None
+
+/// Reload open commands from file
+let reloadOpenCommands (filePath: string) : unit =
+    try
+        let data = Settings.loadOpenCommands filePath
+        openCommandsCache <- Some data
+        openCommandsFilePath <- Some filePath
+        Logger.info (sprintf "Loaded %d open command(s) from %s" data.OpenCommands.Length filePath)
+    with
+    | ex ->
+        Logger.logException ex "Failed to reload open commands"
+        openCommandsCache <- Some Settings.defaultOpenCommandsData
+
+/// Get current open commands
+let getOpenCommands () : Settings.OpenCommand list =
+    match openCommandsCache with
+    | Some data -> data.OpenCommands
+    | None -> []
+
+/// Find an open command by keyword (case-insensitive)
+let findOpenCommand (keyword: string) : Settings.OpenCommand option =
+    let normalizedKeyword = keyword.Trim().ToLowerInvariant()
+    getOpenCommands()
+    |> List.tryFind (fun cmd -> cmd.Keyword.ToLowerInvariant() = normalizedKeyword)
+
+/// Check if text matches "open [keyword]" pattern and find the command
+let private tryMatchOpenCommand (normalizedText: string) : Settings.OpenCommand option =
+    // Pattern: "open <keyword>"
+    if normalizedText.StartsWith("open ") && normalizedText.Length > 5 then
+        let keyword = normalizedText.Substring(5).Trim()
+
+        // Don't match "open settings" (built-in command)
+        if keyword <> "settings" then
+            Logger.debug (sprintf "Checking for open command with keyword: %s" keyword)
+            findOpenCommand keyword
+        else
+            None
+    else
+        None
 
 /// Store the last transcription for "repeat message" command
 let storeLastTranscription (text: string) : unit =
@@ -137,6 +181,17 @@ let processTranscriptionWithCommands (text: string) (replacements: Settings.Keyw
         if normalizedText = "open settings" then
             Logger.info "Detected 'open settings' command"
             OpenSettings
+        // Check for custom "open [keyword]" commands
+        elif normalizedText.StartsWith("open ") then
+            match tryMatchOpenCommand normalizedText with
+            | Some openCommand ->
+                Logger.info (sprintf "Detected custom open command: %s" openCommand.Keyword)
+                OpenApplication openCommand
+            | None ->
+                // No matching open command, process as normal text
+                Logger.debug "No matching open command found, processing as text"
+                let processedText = processTranscription text replacements
+                TypeText processedText
         // Check for "repeat message" command (exact match after normalization)
         elif normalizedText = "repeat message" then
             Logger.info "Detected 'repeat message' command"

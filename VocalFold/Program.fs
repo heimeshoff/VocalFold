@@ -66,6 +66,10 @@ let main argv =
             let keywordsPath = Settings.getKeywordsFilePath currentSettings
             let mutable currentKeywordData = Settings.loadKeywordData keywordsPath
 
+            // Load open commands from external file
+            let openCommandsPath = Settings.getOpenCommandsFilePath currentSettings
+            TextProcessor.reloadOpenCommands openCommandsPath
+
             Logger.info "Loaded settings:"
             Logger.info (sprintf "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings))
             Logger.info (sprintf "   Model: %s" currentSettings.ModelSize)
@@ -73,6 +77,8 @@ let main argv =
             Logger.info (sprintf "   Loaded %d keyword replacements in %d categories"
                 currentKeywordData.KeywordReplacements.Length
                 currentKeywordData.Categories.Length)
+            Logger.info (sprintf "   Open commands file: %s" openCommandsPath)
+            Logger.info (sprintf "   Loaded %d open command(s)" (TextProcessor.getOpenCommands().Length))
 
             // Log microphone selection
             match currentSettings.SelectedMicrophoneIndex with
@@ -351,6 +357,25 @@ let main argv =
                                                 // Open settings dialog
                                                 openSettingsDialog()
                                                 Logger.info "Settings command completed successfully"
+
+                                            | TextProcessor.OpenApplication openCommand ->
+                                                // Hide overlay first
+                                                Logger.info (sprintf "Launching application(s) for command: %s" openCommand.Keyword)
+                                                overlayManager.Hide()
+                                                do! Async.Sleep(400)
+
+                                                // Execute the open command
+                                                let results = ApplicationLauncher.executeOpenCommand openCommand
+
+                                                // Check if all launches succeeded
+                                                let failedResults = results |> List.filter (fun r -> not r.Success)
+                                                if List.isEmpty failedResults then
+                                                    Logger.info (sprintf "✓ Successfully launched all targets for '%s'" openCommand.Keyword)
+                                                else
+                                                    Logger.warning (sprintf "⚠ Some targets failed to launch for '%s':" openCommand.Keyword)
+                                                    failedResults |> List.iter (fun r ->
+                                                        Logger.warning (sprintf "  - %s: %s" r.Target.Name (defaultArg r.ErrorMessage "Unknown error"))
+                                                    )
 
                                             | TextProcessor.TypeText processedText ->
                                                 // Store this transcription for "repeat message" command
