@@ -24,12 +24,18 @@ let init () =
         Toasts = []
         KeywordsPath = NotStarted
         EditingKeywordsPath = None
+        OpenCommandsPath = NotStarted
+        EditingOpenCommandsPath = None
+        OpenCommands = NotStarted
+        EditingOpenCommand = None
     }
     // Load initial data
     model, Cmd.batch [
         Cmd.ofMsg LoadSettings
         Cmd.ofMsg LoadStatus
         Cmd.ofMsg LoadKeywordsPath
+        Cmd.ofMsg LoadOpenCommandsPath
+        Cmd.ofMsg LoadOpenCommands
     ]
 
 // ============================================================================
@@ -117,7 +123,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with IsRecordingHotkey = false; PendingHotkey = None }, Cmd.none
 
     | AddKeyword ->
-        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = ""; Category = None }) }, Cmd.none
+        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = ""; Category = None; UsageCount = None }) }, Cmd.none
 
     | EditKeyword index ->
         match model.Settings with
@@ -187,6 +193,76 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
 
     | DismissToast id ->
         { model with Toasts = model.Toasts |> List.filter (fun t -> t.Id <> id) }, Cmd.none
+
+    | LoadOpenCommands ->
+        model,
+        Cmd.OfPromise.either
+            Api.getOpenCommands
+            ()
+            OpenCommandsLoaded
+            (fun ex -> OpenCommandsLoaded (Result.Error ex.Message))
+
+    | OpenCommandsLoaded result ->
+        match result with
+        | Result.Ok commands ->
+            { model with OpenCommands = Loaded commands }, Cmd.none
+        | Result.Error err ->
+            { model with OpenCommands = LoadingState.Error err }, Cmd.none
+
+    | AddOpenCommand ->
+        { model with EditingOpenCommand = Some (-1, { Keyword = ""; Description = None; Targets = []; LaunchDelay = None; UsageCount = None }) }, Cmd.none
+
+    | EditOpenCommand index ->
+        match model.OpenCommands with
+        | LoadingState.Loaded commands when index >= 0 && index < commands.Length ->
+            { model with EditingOpenCommand = Some (index, commands.[index]) }, Cmd.none
+        | _ ->
+            model, Cmd.none
+
+    | UpdateEditingOpenCommand command ->
+        match model.EditingOpenCommand with
+        | Some (index, _) ->
+            { model with EditingOpenCommand = Some (index, command) }, Cmd.none
+        | None ->
+            model, Cmd.none
+
+    | SaveOpenCommand command ->
+        match model.OpenCommands, model.EditingOpenCommand with
+        | LoadingState.Loaded commands, Some (index, _) when index >= 0 ->
+            // Update existing command
+            { model with EditingOpenCommand = None },
+            Cmd.OfPromise.either
+                (Api.updateOpenCommand index)
+                command
+                (fun _ -> LoadOpenCommands)
+                (fun ex -> ShowToast (sprintf "Failed to save command: %s" ex.Message, ToastType.Error))
+        | LoadingState.Loaded commands, Some (-1, _) ->
+            // Add new command
+            { model with EditingOpenCommand = None },
+            Cmd.OfPromise.either
+                Api.createOpenCommand
+                command
+                (fun _ -> LoadOpenCommands)
+                (fun ex -> ShowToast (sprintf "Failed to create command: %s" ex.Message, ToastType.Error))
+        | _ ->
+            model, Cmd.none
+
+    | DeleteOpenCommand index ->
+        model,
+        Cmd.OfPromise.either
+            Api.deleteOpenCommand
+            index
+            (fun _ -> LoadOpenCommands)
+            (fun ex -> ShowToast (sprintf "Failed to delete command: %s" ex.Message, ToastType.Error))
+
+    | CancelEditOpenCommand ->
+        { model with EditingOpenCommand = None }, Cmd.none
+
+    | TestOpenCommand command ->
+        model, Cmd.none
+
+    | OpenCommandTested result ->
+        model, Cmd.none
 
     | LoadKeywords ->
         model, Cmd.ofMsg LoadSettings
@@ -318,6 +394,66 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         model,
         Cmd.ofMsg (ShowToast (sprintf "Failed to export keywords: %s" err, ToastType.Error))
 
+    | LoadOpenCommandsPath ->
+        { model with OpenCommandsPath = LoadingState.Loading },
+        Cmd.OfPromise.either
+            Api.getOpenCommandsPath
+            ()
+            OpenCommandsPathLoaded
+            (fun ex -> OpenCommandsPathLoaded (Result.Error ex.Message))
+
+    | OpenCommandsPathLoaded (Result.Ok pathInfo) ->
+        { model with OpenCommandsPath = LoadingState.Loaded pathInfo }, Cmd.none
+
+    | OpenCommandsPathLoaded (Result.Error err) ->
+        { model with OpenCommandsPath = LoadingState.Error err },
+        Cmd.ofMsg (ShowToast (sprintf "Failed to load open commands path: %s" err, ToastType.Error))
+
+    | StartEditingOpenCommandsPath ->
+        match model.OpenCommandsPath with
+        | LoadingState.Loaded pathInfo ->
+            { model with EditingOpenCommandsPath = Some pathInfo.CurrentPath }, Cmd.none
+        | _ ->
+            model, Cmd.none
+
+    | UpdateEditingOpenCommandsPath path ->
+        { model with EditingOpenCommandsPath = Some path }, Cmd.none
+
+    | SaveOpenCommandsPath ->
+        match model.EditingOpenCommandsPath with
+        | Some path when path.Trim() <> "" ->
+            { model with EditingOpenCommandsPath = None },
+            Cmd.OfPromise.either
+                Api.updateOpenCommandsPath
+                (Some path)
+                OpenCommandsPathSaved
+                (fun ex -> OpenCommandsPathSaved (Result.Error ex.Message))
+        | _ ->
+            model, Cmd.none
+
+    | OpenCommandsPathSaved (Result.Ok newPath) ->
+        model,
+        Cmd.batch [
+            Cmd.ofMsg LoadOpenCommandsPath
+            Cmd.ofMsg LoadOpenCommands  // Reload commands from the new path
+            Cmd.ofMsg (ShowToast (sprintf "Open commands file path updated to: %s" newPath, ToastType.Success))
+        ]
+
+    | OpenCommandsPathSaved (Result.Error err) ->
+        model,
+        Cmd.ofMsg (ShowToast (sprintf "Failed to update open commands path: %s" err, ToastType.Error))
+
+    | ResetOpenCommandsPathToDefault ->
+        { model with EditingOpenCommandsPath = None },
+        Cmd.OfPromise.either
+            Api.updateOpenCommandsPath
+            None
+            OpenCommandsPathSaved
+            (fun ex -> OpenCommandsPathSaved (Result.Error ex.Message))
+
+    | CancelEditingOpenCommandsPath ->
+        { model with EditingOpenCommandsPath = None }, Cmd.none
+
 // ============================================================================
 // View
 // ============================================================================
@@ -373,6 +509,11 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                                                 prop.text "Keywords"
                                                 prop.onClick (fun _ -> dispatch (NavigateToPage KeywordSettings))
                                             ]
+                                            Html.button [
+                                                prop.className "w-full text-left px-4 py-2 rounded hover:bg-primary/20 transition-smooth"
+                                                prop.text "Open Commands"
+                                                prop.onClick (fun _ -> dispatch (NavigateToPage OpenCommandsSettings))
+                                            ]
                                         ]
                                     ]
                                     Html.div [
@@ -405,9 +546,11 @@ let private view (model: Model) (dispatch: Msg -> unit) =
                             | SystemSettings ->
                                 Components.SystemSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey dispatch
                             | GeneralSettings ->
-                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey model.KeywordsPath model.EditingKeywordsPath dispatch
+                                Components.GeneralSettings.view model.Settings model.IsRecordingHotkey model.PendingHotkey model.KeywordsPath model.EditingKeywordsPath model.OpenCommandsPath model.EditingOpenCommandsPath dispatch
                             | KeywordSettings ->
                                 Components.KeywordManager.view model.Settings model.EditingKeyword model.EditingCategory model.ExpandedCategories dispatch
+                            | OpenCommandsSettings ->
+                                Components.OpenCommandsSettings.view model.OpenCommands model.EditingOpenCommand dispatch
                             | Changelog ->
                                 Components.Changelog.view dispatch
                             | About ->

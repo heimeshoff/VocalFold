@@ -29,6 +29,7 @@ let keywordReplacementDecoder: Decoder<KeywordReplacement> =
         Keyword = get.Required.Field "keyword" Decode.string
         Replacement = get.Required.Field "replacement" Decode.string
         Category = get.Optional.Field "category" Decode.string
+        UsageCount = get.Optional.Field "usageCount" Decode.int
     })
 
 let keywordReplacementEncoder (kr: KeywordReplacement) =
@@ -36,6 +37,7 @@ let keywordReplacementEncoder (kr: KeywordReplacement) =
         "keyword", Encode.string kr.Keyword
         "replacement", Encode.string kr.Replacement
         "category", (match kr.Category with | Some c -> Encode.string c | None -> Encode.nil)
+        "usageCount", (match kr.UsageCount with | Some count -> Encode.int count | None -> Encode.nil)
     ]
 
 let appSettingsDecoder: Decoder<AppSettings> =
@@ -47,6 +49,7 @@ let appSettingsDecoder: Decoder<AppSettings> =
         TypingSpeed = get.Required.Field "typingSpeed" Decode.string
         StartWithWindows = get.Optional.Field "startWithWindows" Decode.bool |> Option.defaultValue false
         KeywordsFilePath = get.Optional.Field "keywordsFilePath" Decode.string
+        OpenCommandsFilePath = get.Optional.Field "openCommandsFilePath" Decode.string
         // Phase 15: Keywords are now in external file, these are deprecated but kept for backward compatibility
         KeywordReplacements = get.Optional.Field "keywordReplacements" (Decode.list keywordReplacementDecoder) |> Option.defaultValue []
         Categories = get.Optional.Field "categories" (Decode.list keywordCategoryDecoder) |> Option.defaultValue []
@@ -62,6 +65,7 @@ let appSettingsEncoder (settings: AppSettings) =
         "typingSpeed", Encode.string settings.TypingSpeed
         "startWithWindows", Encode.bool settings.StartWithWindows
         "keywordsFilePath", (match settings.KeywordsFilePath with | Some p -> Encode.string p | None -> Encode.nil)
+        "openCommandsFilePath", (match settings.OpenCommandsFilePath with | Some p -> Encode.string p | None -> Encode.nil)
         "keywordReplacements", Encode.list (List.map keywordReplacementEncoder settings.KeywordReplacements)
         "categories", Encode.list (List.map keywordCategoryEncoder settings.Categories)
         "selectedMicrophoneIndex", (match settings.SelectedMicrophoneIndex with | Some idx -> Encode.int idx | None -> Encode.nil)
@@ -71,6 +75,50 @@ let appStatusDecoder: Decoder<AppStatus> =
     Decode.object (fun get -> {
         Version = get.Required.Field "version" Decode.string
         CurrentHotkey = get.Required.Field "currentHotkey" Decode.string
+    })
+
+let launchTargetDecoder: Decoder<LaunchTarget> =
+    Decode.object (fun get -> {
+        Name = get.Required.Field "name" Decode.string
+        Type = get.Required.Field "type" Decode.string
+        Path = get.Required.Field "path" Decode.string
+        Arguments = get.Optional.Field "arguments" Decode.string
+        WorkingDirectory = get.Optional.Field "workingDirectory" Decode.string
+    })
+
+let launchTargetEncoder (target: LaunchTarget) =
+    Encode.object [
+        "name", Encode.string target.Name
+        "type", Encode.string target.Type
+        "path", Encode.string target.Path
+        "arguments", (match target.Arguments with | Some a -> Encode.string a | None -> Encode.nil)
+        "workingDirectory", (match target.WorkingDirectory with | Some w -> Encode.string w | None -> Encode.nil)
+    ]
+
+let openCommandDecoder: Decoder<OpenCommand> =
+    Decode.object (fun get -> {
+        Keyword = get.Required.Field "keyword" Decode.string
+        Description = get.Optional.Field "description" Decode.string
+        Targets = get.Required.Field "targets" (Decode.list launchTargetDecoder)
+        LaunchDelay = get.Optional.Field "launchDelay" Decode.int
+        UsageCount = get.Optional.Field "usageCount" Decode.int
+    })
+
+let openCommandEncoder (cmd: OpenCommand) =
+    Encode.object [
+        "keyword", Encode.string cmd.Keyword
+        "description", (match cmd.Description with | Some d -> Encode.string d | None -> Encode.nil)
+        "targets", Encode.list (List.map launchTargetEncoder cmd.Targets)
+        "launchDelay", (match cmd.LaunchDelay with | Some d -> Encode.int d | None -> Encode.nil)
+        "usageCount", (match cmd.UsageCount with | Some count -> Encode.int count | None -> Encode.nil)
+    ]
+
+let testLaunchResultDecoder: Decoder<TestLaunchResult> =
+    Decode.object (fun get -> {
+        TargetName = get.Required.Field "targetName" Decode.string
+        Success = get.Required.Field "success" Decode.bool
+        ErrorMessage = get.Optional.Field "errorMessage" Decode.string
+        ProcessId = get.Optional.Field "processId" Decode.int
     })
 
 // ============================================================================
@@ -420,6 +468,59 @@ let exportKeywordsToFile (targetPath: string) (setAsActive: bool) : JS.Promise<R
     } |> Async.StartAsPromise
 
 // ============================================================================
+// Open Commands File Path API Functions
+// ============================================================================
+
+let openCommandsPathInfoDecoder: Decoder<Types.OpenCommandsPathInfo> =
+    Decode.object (fun get -> {
+        CurrentPath = get.Required.Field "currentPath" Decode.string
+        DefaultPath = get.Required.Field "defaultPath" Decode.string
+        IsDefault = get.Required.Field "isDefault" Decode.bool
+    })
+
+/// Get the current open commands file path
+let getOpenCommandsPath () : JS.Promise<Result<Types.OpenCommandsPathInfo, string>> =
+    async {
+        try
+            let! response = Http.request (baseUrl + "/api/settings/open-commands-path") |> Http.method GET |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString openCommandsPathInfoDecoder response.responseText with
+                | Result.Ok pathInfo -> return Result.Ok pathInfo
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to get open commands path: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Update the open commands file path (or reset to default if None)
+let updateOpenCommandsPath (path: string option) : JS.Promise<Result<string, string>> =
+    async {
+        try
+            let pathValue = match path with | Some p -> Encode.string p | None -> Encode.nil
+            let json = Encode.toString 0 (Encode.object [ "path", pathValue ])
+            let! response =
+                Http.request (baseUrl + "/api/settings/open-commands-path")
+                |> Http.method PUT
+                |> Http.content (BodyContent.Text json)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                let decoder = Decode.object (fun get -> get.Required.Field "path" Decode.string)
+                match Decode.fromString decoder response.responseText with
+                | Result.Ok newPath -> return Result.Ok newPath
+                | Result.Error err -> return Result.Error err
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to update open commands path: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+// ============================================================================
 // Microphone API Functions
 // ============================================================================
 
@@ -552,5 +653,144 @@ let testMicrophoneWithTranscription (deviceIndex: int option) (durationSeconds: 
                 return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
         with ex ->
             return Result.Error (sprintf "Failed to test microphone: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+// ============================================================================
+// Open Commands API
+// ============================================================================
+
+/// Get all open commands
+let getOpenCommands () : JS.Promise<Result<OpenCommand list, string>> =
+    async {
+        try
+            let url = sprintf "%s/api/open-commands" baseUrl
+            let! response =
+                Http.request url
+                |> Http.method GET
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString (Decode.list openCommandDecoder) response.responseText with
+                | Result.Ok commands -> return Result.Ok commands
+                | Result.Error err -> return Result.Error (sprintf "Failed to decode: %s" err)
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to get open commands: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Create a new open command
+let createOpenCommand (command: OpenCommand) : JS.Promise<Result<OpenCommand, string>> =
+    async {
+        try
+            let url = sprintf "%s/api/open-commands" baseUrl
+            let body = openCommandEncoder command |> Encode.toString 0
+
+            let! response =
+                Http.request url
+                |> Http.method POST
+                |> Http.content (BodyContent.Text body)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 201 ->
+                match Decode.fromString openCommandDecoder response.responseText with
+                | Result.Ok cmd -> return Result.Ok cmd
+                | Result.Error err -> return Result.Error (sprintf "Failed to decode: %s" err)
+            | 400 ->
+                // Validation error
+                let errorDecoder = Decode.field "error" Decode.string
+                match Decode.fromString errorDecoder response.responseText with
+                | Result.Ok err -> return Result.Error err
+                | Result.Error _ -> return Result.Error "Validation failed"
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to create command: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Update an existing open command
+let updateOpenCommand (index: int) (command: OpenCommand) : JS.Promise<Result<OpenCommand, string>> =
+    async {
+        try
+            let url = sprintf "%s/api/open-commands/%d" baseUrl index
+            let body = openCommandEncoder command |> Encode.toString 0
+
+            let! response =
+                Http.request url
+                |> Http.method PUT
+                |> Http.content (BodyContent.Text body)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString openCommandDecoder response.responseText with
+                | Result.Ok cmd -> return Result.Ok cmd
+                | Result.Error err -> return Result.Error (sprintf "Failed to decode: %s" err)
+            | 400 ->
+                let errorDecoder = Decode.field "error" Decode.string
+                match Decode.fromString errorDecoder response.responseText with
+                | Result.Ok err -> return Result.Error err
+                | Result.Error _ -> return Result.Error "Validation failed"
+            | 404 ->
+                return Result.Error "Command not found"
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to update command: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Delete an open command
+let deleteOpenCommand (index: int) : JS.Promise<Result<unit, string>> =
+    async {
+        try
+            let url = sprintf "%s/api/open-commands/%d" baseUrl index
+
+            let! response =
+                Http.request url
+                |> Http.method DELETE
+                |> Http.send
+
+            match response.statusCode with
+            | 200 -> return Result.Ok ()
+            | 404 -> return Result.Error "Command not found"
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to delete command: %s" ex.Message)
+    } |> Async.StartAsPromise
+
+/// Test an open command (launches the targets)
+let testOpenCommand (command: OpenCommand) : JS.Promise<Result<TestLaunchResult list, string>> =
+    async {
+        try
+            let url = sprintf "%s/api/open-commands/test" baseUrl
+            let body = openCommandEncoder command |> Encode.toString 0
+
+            let! response =
+                Http.request url
+                |> Http.method POST
+                |> Http.content (BodyContent.Text body)
+                |> Http.header (Headers.contentType "application/json")
+                |> Http.send
+
+            match response.statusCode with
+            | 200 ->
+                let decoder = Decode.field "results" (Decode.list testLaunchResultDecoder)
+                match Decode.fromString decoder response.responseText with
+                | Result.Ok results -> return Result.Ok results
+                | Result.Error err -> return Result.Error (sprintf "Failed to decode: %s" err)
+            | 400 ->
+                let errorDecoder = Decode.field "error" Decode.string
+                match Decode.fromString errorDecoder response.responseText with
+                | Result.Ok err -> return Result.Error err
+                | Result.Error _ -> return Result.Error "Validation failed"
+            | code ->
+                return Result.Error (sprintf "HTTP %d: %s" code response.responseText)
+        with ex ->
+            return Result.Error (sprintf "Failed to test command: %s" ex.Message)
     } |> Async.StartAsPromise
 

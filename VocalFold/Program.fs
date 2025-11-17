@@ -63,8 +63,12 @@ let main argv =
             currentSettings <- Settings.migrateKeywordsToExternalFile currentSettings
 
             // Load keywords from external file
-            let keywordsPath = Settings.getKeywordsFilePath currentSettings
+            let mutable keywordsPath = Settings.getKeywordsFilePath currentSettings
             let mutable currentKeywordData = Settings.loadKeywordData keywordsPath
+
+            // Load open commands from external file
+            let mutable openCommandsPath = Settings.getOpenCommandsFilePath currentSettings
+            TextProcessor.reloadOpenCommands openCommandsPath
 
             Logger.info "Loaded settings:"
             Logger.info (sprintf "   Hotkey: %s" (Settings.getHotkeyDisplayName currentSettings))
@@ -73,6 +77,8 @@ let main argv =
             Logger.info (sprintf "   Loaded %d keyword replacements in %d categories"
                 currentKeywordData.KeywordReplacements.Length
                 currentKeywordData.Categories.Length)
+            Logger.info (sprintf "   Open commands file: %s" openCommandsPath)
+            Logger.info (sprintf "   Loaded %d open command(s)" (TextProcessor.getOpenCommands().Length))
 
             // Log microphone selection
             match currentSettings.SelectedMicrophoneIndex with
@@ -160,6 +166,7 @@ let main argv =
                                 // Reload keywords from new path
                                 let newKeywordsPath = Settings.getKeywordsFilePath newSettings
                                 Logger.info (sprintf "Keywords file path changed to: %s" newKeywordsPath)
+                                keywordsPath <- newKeywordsPath
                                 currentKeywordData <- Settings.loadKeywordData newKeywordsPath
                                 Logger.info (sprintf "Reloaded %d keyword replacements from new location"
                                     currentKeywordData.KeywordReplacements.Length)
@@ -339,7 +346,11 @@ let main argv =
                                         else
                                             // Use current keyword data (already loaded and kept in sync)
                                             // Process transcription and check for special commands
-                                            let processingResult = TextProcessor.processTranscriptionWithCommands transcription currentKeywordData.KeywordReplacements
+                                            let (processingResult, usedKeywords) = TextProcessor.processTranscriptionWithCommands transcription currentKeywordData.KeywordReplacements
+
+                                            // Track keyword usage for analytics
+                                            if not (List.isEmpty usedKeywords) then
+                                                TextProcessor.trackKeywordUsage usedKeywords keywordsPath
 
                                             match processingResult with
                                             | TextProcessor.OpenSettings ->
@@ -351,6 +362,28 @@ let main argv =
                                                 // Open settings dialog
                                                 openSettingsDialog()
                                                 Logger.info "Settings command completed successfully"
+
+                                            | TextProcessor.OpenApplication openCommand ->
+                                                // Hide overlay first
+                                                Logger.info (sprintf "Launching application(s) for command: %s" openCommand.Keyword)
+                                                overlayManager.Hide()
+                                                do! Async.Sleep(400)
+
+                                                // Track open command usage for analytics
+                                                Settings.incrementOpenCommandUsage openCommand.Keyword openCommandsPath
+
+                                                // Execute the open command
+                                                let results = ApplicationLauncher.executeOpenCommand openCommand
+
+                                                // Check if all launches succeeded
+                                                let failedResults = results |> List.filter (fun r -> not r.Success)
+                                                if List.isEmpty failedResults then
+                                                    Logger.info (sprintf "✓ Successfully launched all targets for '%s'" openCommand.Keyword)
+                                                else
+                                                    Logger.warning (sprintf "⚠ Some targets failed to launch for '%s':" openCommand.Keyword)
+                                                    failedResults |> List.iter (fun r ->
+                                                        Logger.warning (sprintf "  - %s: %s" r.Target.Name (defaultArg r.ErrorMessage "Unknown error"))
+                                                    )
 
                                             | TextProcessor.TypeText processedText ->
                                                 // Store this transcription for "repeat message" command

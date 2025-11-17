@@ -435,6 +435,70 @@ let exportKeywordsToFileHandler (config: ServerConfig) : HttpHandler =
         }
 
 // ============================================================================
+// Open Commands File Path API Handlers
+// ============================================================================
+
+/// Handler for GET /api/settings/open-commands-path
+let getOpenCommandsPathHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+            let currentPath = Settings.getOpenCommandsFilePath settings
+            let defaultPath = Settings.getDefaultOpenCommandsFilePath()
+            let isDefault = currentPath = defaultPath
+
+            return! json {|
+                currentPath = currentPath
+                defaultPath = defaultPath
+                isDefault = isDefault
+            |} next ctx
+        }
+
+/// Handler for PUT /api/settings/open-commands-path
+let updateOpenCommandsPathHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! body = ctx.BindJsonAsync<{| path: string option |}>()
+            let settings = Settings.load()
+
+            // Validate the path if provided
+            match body.path with
+            | Some path when not (String.IsNullOrWhiteSpace(path)) ->
+                match Settings.validateOpenCommandsFilePath path with
+                | Ok validPath ->
+                    // Update settings with new path
+                    let updatedSettings = { settings with OpenCommandsFilePath = Some validPath }
+
+                    // Save settings
+                    if Settings.save updatedSettings then
+                        config.OnSettingsChanged updatedSettings
+                        // Reload open commands from new path
+                        TextProcessor.reloadOpenCommands validPath
+                        return! json {| success = true; path = validPath |} next ctx
+                    else
+                        ctx.SetStatusCode 500
+                        return! json {| error = "Failed to save settings" |} next ctx
+
+                | Error errorMsg ->
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+
+            | _ ->
+                // Reset to default path
+                let updatedSettings = { settings with OpenCommandsFilePath = None }
+
+                if Settings.save updatedSettings then
+                    config.OnSettingsChanged updatedSettings
+                    let defaultPath = Settings.getDefaultOpenCommandsFilePath()
+                    // Reload open commands from default path
+                    TextProcessor.reloadOpenCommands defaultPath
+                    return! json {| success = true; path = defaultPath |} next ctx
+                else
+                    ctx.SetStatusCode 500
+                    return! json {| error = "Failed to save settings" |} next ctx
+        }
+
+// ============================================================================
 // Microphone API Handlers
 // ============================================================================
 
@@ -598,6 +662,237 @@ let transcribeMicrophoneTestHandler: HttpHandler =
         }
 
 // ============================================================================
+// Open Commands API Handlers
+// ============================================================================
+
+/// Handler for GET /api/open-commands
+let getOpenCommandsHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: GET /api/open-commands"
+
+                let settings = Settings.load()
+                let filePath = Settings.getOpenCommandsFilePath settings
+                let data = Settings.loadOpenCommands filePath
+
+                Logger.info (sprintf "Returning %d open command(s)" data.OpenCommands.Length)
+                return! json data.OpenCommands next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to get open commands"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// Handler for POST /api/open-commands
+let createOpenCommandHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: POST /api/open-commands"
+
+                let! newCommand = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Creating open command: %s" newCommand.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand newCommand with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    let settings = Settings.load()
+                    let filePath = Settings.getOpenCommandsFilePath settings
+                    let data = Settings.loadOpenCommands filePath
+
+                    // Check for duplicate keyword
+                    let isDuplicate =
+                        data.OpenCommands
+                        |> List.exists (fun cmd ->
+                            cmd.Keyword.ToLowerInvariant() = newCommand.Keyword.ToLowerInvariant())
+
+                    if isDuplicate then
+                        Logger.warning (sprintf "Open command with keyword '%s' already exists" newCommand.Keyword)
+                        ctx.SetStatusCode 400
+                        return! json {| error = "Command with this keyword already exists" |} next ctx
+                    else
+                        // Add new command
+                        let updatedData = {
+                            data with
+                                OpenCommands = data.OpenCommands @ [newCommand]
+                        }
+
+                        match Settings.saveOpenCommands filePath updatedData with
+                        | Ok () ->
+                            // Reload commands in text processor
+                            TextProcessor.reloadOpenCommands filePath
+
+                            Logger.info (sprintf "✓ Created open command: %s" newCommand.Keyword)
+                            ctx.SetStatusCode 201
+                            return! json newCommand next ctx
+                        | Error errorMsg ->
+                            Logger.warning (sprintf "Failed to save open command: %s" errorMsg)
+                            ctx.SetStatusCode 500
+                            return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to create open command"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// Handler for PUT /api/open-commands/{index}
+let updateOpenCommandHandler (config: ServerConfig) (index: int) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug (sprintf "API: PUT /api/open-commands/%d" index)
+
+                let! updatedCommand = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Updating open command at index %d: %s" index updatedCommand.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand updatedCommand with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    let settings = Settings.load()
+                    let filePath = Settings.getOpenCommandsFilePath settings
+                    let data = Settings.loadOpenCommands filePath
+
+                    if index < 0 || index >= data.OpenCommands.Length then
+                        Logger.warning (sprintf "Invalid index: %d (max: %d)" index (data.OpenCommands.Length - 1))
+                        ctx.SetStatusCode 404
+                        return! json {| error = "Command not found" |} next ctx
+                    else
+                        // Check for duplicate keyword (excluding current command)
+                        let isDuplicate =
+                            data.OpenCommands
+                            |> List.mapi (fun i cmd -> i, cmd)
+                            |> List.exists (fun (i, cmd) ->
+                                i <> index &&
+                                cmd.Keyword.ToLowerInvariant() = updatedCommand.Keyword.ToLowerInvariant())
+
+                        if isDuplicate then
+                            Logger.warning (sprintf "Open command with keyword '%s' already exists" updatedCommand.Keyword)
+                            ctx.SetStatusCode 400
+                            return! json {| error = "Command with this keyword already exists" |} next ctx
+                        else
+                            // Update command
+                            let updatedCommands =
+                                data.OpenCommands
+                                |> List.mapi (fun i cmd -> if i = index then updatedCommand else cmd)
+
+                            let updatedData = { data with OpenCommands = updatedCommands }
+
+                            match Settings.saveOpenCommands filePath updatedData with
+                            | Ok () ->
+                                // Reload commands in text processor
+                                TextProcessor.reloadOpenCommands filePath
+
+                                Logger.info (sprintf "✓ Updated open command at index %d" index)
+                                return! json updatedCommand next ctx
+                            | Error errorMsg ->
+                                Logger.warning (sprintf "Failed to save open commands: %s" errorMsg)
+                                ctx.SetStatusCode 500
+                                return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex (sprintf "Failed to update open command at index %d" index)
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// Handler for DELETE /api/open-commands/{index}
+let deleteOpenCommandHandler (config: ServerConfig) (index: int) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug (sprintf "API: DELETE /api/open-commands/%d" index)
+
+                let settings = Settings.load()
+                let filePath = Settings.getOpenCommandsFilePath settings
+                let data = Settings.loadOpenCommands filePath
+
+                if index < 0 || index >= data.OpenCommands.Length then
+                    Logger.warning (sprintf "Invalid index: %d (max: %d)" index (data.OpenCommands.Length - 1))
+                    ctx.SetStatusCode 404
+                    return! json {| error = "Command not found" |} next ctx
+                else
+                    let commandToDelete = data.OpenCommands.[index]
+                    Logger.info (sprintf "Deleting open command: %s" commandToDelete.Keyword)
+
+                    // Remove command
+                    let updatedCommands =
+                        data.OpenCommands
+                        |> List.mapi (fun i cmd -> i, cmd)
+                        |> List.filter (fun (i, _) -> i <> index)
+                        |> List.map snd
+
+                    let updatedData = { data with OpenCommands = updatedCommands }
+
+                    match Settings.saveOpenCommands filePath updatedData with
+                    | Ok () ->
+                        // Reload commands in text processor
+                        TextProcessor.reloadOpenCommands filePath
+
+                        Logger.info (sprintf "✓ Deleted open command: %s" commandToDelete.Keyword)
+                        return! json {| success = true |} next ctx
+                    | Error errorMsg ->
+                        Logger.warning (sprintf "Failed to save open commands: %s" errorMsg)
+                        ctx.SetStatusCode 500
+                        return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex (sprintf "Failed to delete open command at index %d" index)
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// Handler for POST /api/open-commands/test
+let testOpenCommandHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: POST /api/open-commands/test"
+
+                let! command = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Testing open command: %s" command.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand command with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    // Execute the command
+                    let results = ApplicationLauncher.executeOpenCommand command
+
+                    // Convert results to JSON-friendly format
+                    let resultsJson =
+                        results
+                        |> List.map (fun r ->
+                            {|
+                                targetName = r.Target.Name
+                                success = r.Success
+                                errorMessage = r.ErrorMessage
+                                processId = r.ProcessId
+                            |})
+
+                    Logger.info (sprintf "✓ Test completed for: %s" command.Keyword)
+                    return! json {| results = resultsJson |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to test open command"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+// ============================================================================
 // Routing
 // ============================================================================
 
@@ -610,6 +905,8 @@ let webApp (config: ServerConfig) : HttpHandler =
                 PUT  >=> route "/settings" >=> updateSettingsHandler config
                 GET  >=> route "/settings/keywords-path" >=> getKeywordsPathHandler
                 PUT  >=> route "/settings/keywords-path" >=> updateKeywordsPathHandler config
+                GET  >=> route "/settings/open-commands-path" >=> getOpenCommandsPathHandler
+                PUT  >=> route "/settings/open-commands-path" >=> updateOpenCommandsPathHandler config
                 GET  >=> route "/keywords" >=> getKeywordsHandler
                 POST >=> route "/keywords" >=> addKeywordHandler config
                 POST >=> route "/keywords/examples" >=> addExampleKeywordsHandler config
@@ -641,6 +938,17 @@ let webApp (config: ServerConfig) : HttpHandler =
                 POST >=> route "/microphones/test/stop" >=> stopMicrophoneTestHandler
                 GET  >=> route "/microphones/test/levels" >=> getMicrophoneLevelsHandler
                 POST >=> route "/microphones/test/transcribe" >=> transcribeMicrophoneTestHandler
+
+                // Open Commands endpoints
+                GET  >=> route "/open-commands" >=> getOpenCommandsHandler
+                POST >=> route "/open-commands" >=> createOpenCommandHandler config
+                POST >=> route "/open-commands/test" >=> testOpenCommandHandler
+                routef "/open-commands/%i" (fun index ->
+                    choose [
+                        PUT    >=> updateOpenCommandHandler config index
+                        DELETE >=> deleteOpenCommandHandler config index
+                    ]
+                )
             ]
         )
 
