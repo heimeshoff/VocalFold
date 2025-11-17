@@ -27,6 +27,7 @@ VocalFold is a Windows desktop application that transcribes your voice to text u
 - 🎨 **Modern Web UI**: Configure settings via beautiful web interface
 - 📝 **Keyword Replacement**: Create shortcuts for frequently used phrases
 - 🗂️ **Category Organization**: Organize keywords into collapsible categories
+- 🚀 **Open Commands**: Launch applications, URLs, and folders with voice commands
 
 ## System Requirements
 
@@ -83,21 +84,88 @@ VocalFold automatically detects and uses the best available runtime:
 5. Application runs in system tray
 
 ### Option 2: Build from Source
+
+#### Prerequisites
+- **.NET 9.0 SDK** - [Download](https://dotnet.microsoft.com/download/dotnet/9.0)
+- **Node.js 20+** - [Download](https://nodejs.org/)
+- **Git** - [Download](https://git-scm.com/)
+
+#### Quick Start (Recommended)
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/VocalFold.git
 cd VocalFold
 
-# Build project
+# Build and run using npm scripts (builds WebUI + Backend)
+npm install
+npm run build:webui
+npm run run
+```
+
+Or use the provided Windows batch file:
+```bash
+# Double-click or run from command line
+.\run.bat
+```
+
+#### Manual Build Steps
+
+**Important**: The WebUI **must** be built before running the backend, otherwise the settings interface won't work.
+
+**Step 1: Build the WebUI**
+```bash
+cd VocalFold.WebUI
+
+# Install dependencies (first time only)
+npm install
+dotnet tool restore
+
+# Build the WebUI (creates dist/ folder)
+npm run build
+
+cd ..
+```
+
+**Step 2: Build and Run the Backend**
+```bash
+cd VocalFold
+
+# Restore and build
 dotnet restore
 dotnet build
 
-# Run application
-dotnet run --project VocalFold
+# Run the application
+dotnet run
 
-# Or build standalone executable
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+cd ..
 ```
+
+#### Build a Standalone Executable
+```bash
+# Using the provided script (includes WebUI build)
+.\build-exe.bat
+
+# Or manually
+npm run build:webui
+dotnet publish VocalFold -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+#### Understanding the Build Process
+
+VocalFold consists of two main components:
+
+1. **VocalFold.WebUI** (Frontend)
+   - Written in F# using Fable (compiles F# to JavaScript)
+   - Built with Vite bundler
+   - Produces static files in `VocalFold.WebUI/dist/`
+   - **Must be built first**
+
+2. **VocalFold** (Backend)
+   - Written in F# (.NET)
+   - Serves the WebUI static files from `VocalFold.WebUI/dist/`
+   - If `dist/` folder doesn't exist, settings won't open
+
+The backend's web server (WebServer.fs:660-673) looks for the WebUI files in `VocalFold.WebUI/dist/`. If this folder doesn't exist, you'll get errors when trying to open the settings interface.
 
 ## Usage
 
@@ -170,6 +238,26 @@ Use these benchmarks to verify GPU is working:
 - CPU (i7-10700K): 5-8s
 
 If your performance is significantly worse, GPU acceleration may not be working correctly.
+
+### Settings Won't Open / WebUI Not Loading
+**Symptoms**: Clicking "Settings" does nothing, or browser shows empty page
+
+**Cause**: The WebUI hasn't been built yet. The backend requires `VocalFold.WebUI/dist/` folder to exist.
+
+**Solutions**:
+```bash
+# From the root directory
+npm run build:webui
+
+# Or build manually
+cd VocalFold.WebUI
+npm install
+dotnet tool restore
+npm run build
+cd ..
+```
+
+**Prevention**: Always build from the root directory using `npm run build:webui` or `run.bat`, not by running `dotnet run` directly in the VocalFold subfolder.
 
 ### Other Issues
 - **Hotkey not working**: Check for conflicts with other applications

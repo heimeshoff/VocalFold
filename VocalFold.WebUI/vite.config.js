@@ -8,7 +8,7 @@ export default defineConfig({
   root: './',  // Root is the VocalFold.WebUI folder
   publicDir: path.resolve(__dirname, 'public'),
   build: {
-    outDir: path.resolve(__dirname, 'dist-build'),  // Output to dist-build for production
+    outDir: path.resolve(__dirname, 'dist'),  // Output to dist for production
     emptyOutDir: true,  // Clean the build output directory
     sourcemap: false,
     rollupOptions: {
