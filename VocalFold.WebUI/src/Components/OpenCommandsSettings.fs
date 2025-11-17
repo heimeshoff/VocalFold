@@ -84,6 +84,7 @@ let private OpenCommandModal (command: OpenCommand option) (dispatch: Msg -> uni
                 Description = if System.String.IsNullOrWhiteSpace(descriptionInput) then None else Some (descriptionInput.Trim())
                 Targets = targets
                 LaunchDelay = None
+                UsageCount = command |> Option.bind (fun c -> c.UsageCount)  // Preserve usage count
             }
             dispatch (SaveOpenCommand newCommand)
             onClose()
@@ -509,6 +510,19 @@ let private OpenCommandsCard (commands: OpenCommand list) (onEdit: int -> unit) 
                                             Html.div [
                                                 prop.className "flex items-center space-x-2"
                                                 prop.children [
+                                                    // Usage Count Badge
+                                                    match cmd.UsageCount with
+                                                    | Some count when count > 0 ->
+                                                        Html.span [
+                                                            prop.className "px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded"
+                                                            prop.title (sprintf "Used %d time%s" count (if count = 1 then "" else "s"))
+                                                            prop.text (sprintf "×%d" count)
+                                                        ]
+                                                    | _ ->
+                                                        Html.span [
+                                                            prop.className "px-2 py-1 text-xs font-medium text-text-secondary/50"
+                                                            prop.text "×0"
+                                                        ]
                                                     Html.button [
                                                         prop.className "px-3 py-1 text-sm text-primary hover:bg-primary/10 rounded transition-colors"
                                                         prop.text "Edit"

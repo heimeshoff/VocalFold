@@ -23,6 +23,7 @@ let private KeywordModal (keyword: KeywordReplacement option) (index: int option
                 Keyword = keywordInput.Trim()
                 Replacement = replacementInput
                 Category = if selectedCategory = "Uncategorized" then None else Some selectedCategory
+                UsageCount = keyword |> Option.bind (fun k -> k.UsageCount)  // Preserve usage count
             }
             dispatch (SaveKeyword newKeyword)
             onClose()
@@ -559,6 +560,25 @@ let private keywordRow (index: int) (keyword: KeywordReplacement) (isDragging: b
                                         text
                                 )
                             ]
+                        ]
+                    ]
+
+                    // Usage Count Badge
+                    Html.div [
+                        prop.className "flex items-center px-2"
+                        prop.children [
+                            match keyword.UsageCount with
+                            | Some count when count > 0 ->
+                                Html.span [
+                                    prop.className "px-2 py-1 text-xs font-medium bg-primary/10 text-primary rounded"
+                                    prop.title (sprintf "Used %d time%s" count (if count = 1 then "" else "s"))
+                                    prop.text (sprintf "×%d" count)
+                                ]
+                            | _ ->
+                                Html.span [
+                                    prop.className "px-2 py-1 text-xs font-medium text-text-secondary/50"
+                                    prop.text "×0"
+                                ]
                         ]
                     ]
 

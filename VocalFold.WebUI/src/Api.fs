@@ -29,6 +29,7 @@ let keywordReplacementDecoder: Decoder<KeywordReplacement> =
         Keyword = get.Required.Field "keyword" Decode.string
         Replacement = get.Required.Field "replacement" Decode.string
         Category = get.Optional.Field "category" Decode.string
+        UsageCount = get.Optional.Field "usageCount" Decode.int
     })
 
 let keywordReplacementEncoder (kr: KeywordReplacement) =
@@ -36,6 +37,7 @@ let keywordReplacementEncoder (kr: KeywordReplacement) =
         "keyword", Encode.string kr.Keyword
         "replacement", Encode.string kr.Replacement
         "category", (match kr.Category with | Some c -> Encode.string c | None -> Encode.nil)
+        "usageCount", (match kr.UsageCount with | Some count -> Encode.int count | None -> Encode.nil)
     ]
 
 let appSettingsDecoder: Decoder<AppSettings> =
@@ -99,6 +101,7 @@ let openCommandDecoder: Decoder<OpenCommand> =
         Description = get.Optional.Field "description" Decode.string
         Targets = get.Required.Field "targets" (Decode.list launchTargetDecoder)
         LaunchDelay = get.Optional.Field "launchDelay" Decode.int
+        UsageCount = get.Optional.Field "usageCount" Decode.int
     })
 
 let openCommandEncoder (cmd: OpenCommand) =
@@ -107,6 +110,7 @@ let openCommandEncoder (cmd: OpenCommand) =
         "description", (match cmd.Description with | Some d -> Encode.string d | None -> Encode.nil)
         "targets", Encode.list (List.map launchTargetEncoder cmd.Targets)
         "launchDelay", (match cmd.LaunchDelay with | Some d -> Encode.int d | None -> Encode.nil)
+        "usageCount", (match cmd.UsageCount with | Some count -> Encode.int count | None -> Encode.nil)
     ]
 
 let testLaunchResultDecoder: Decoder<TestLaunchResult> =

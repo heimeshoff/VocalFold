@@ -14,6 +14,7 @@ type KeywordReplacement = {
     Keyword: string
     Replacement: string
     Category: string option
+    UsageCount: int option
 }
 
 type AppSettings = {
@@ -112,6 +113,7 @@ type OpenCommand = {
     Description: string option
     Targets: LaunchTarget list
     LaunchDelay: int option
+    UsageCount: int option
 }
 
 type TestLaunchResult = {

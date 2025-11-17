@@ -63,11 +63,11 @@ let main argv =
             currentSettings <- Settings.migrateKeywordsToExternalFile currentSettings
 
             // Load keywords from external file
-            let keywordsPath = Settings.getKeywordsFilePath currentSettings
+            let mutable keywordsPath = Settings.getKeywordsFilePath currentSettings
             let mutable currentKeywordData = Settings.loadKeywordData keywordsPath
 
             // Load open commands from external file
-            let openCommandsPath = Settings.getOpenCommandsFilePath currentSettings
+            let mutable openCommandsPath = Settings.getOpenCommandsFilePath currentSettings
             TextProcessor.reloadOpenCommands openCommandsPath
 
             Logger.info "Loaded settings:"
@@ -166,6 +166,7 @@ let main argv =
                                 // Reload keywords from new path
                                 let newKeywordsPath = Settings.getKeywordsFilePath newSettings
                                 Logger.info (sprintf "Keywords file path changed to: %s" newKeywordsPath)
+                                keywordsPath <- newKeywordsPath
                                 currentKeywordData <- Settings.loadKeywordData newKeywordsPath
                                 Logger.info (sprintf "Reloaded %d keyword replacements from new location"
                                     currentKeywordData.KeywordReplacements.Length)
@@ -345,7 +346,11 @@ let main argv =
                                         else
                                             // Use current keyword data (already loaded and kept in sync)
                                             // Process transcription and check for special commands
-                                            let processingResult = TextProcessor.processTranscriptionWithCommands transcription currentKeywordData.KeywordReplacements
+                                            let (processingResult, usedKeywords) = TextProcessor.processTranscriptionWithCommands transcription currentKeywordData.KeywordReplacements
+
+                                            // Track keyword usage for analytics
+                                            if not (List.isEmpty usedKeywords) then
+                                                TextProcessor.trackKeywordUsage usedKeywords keywordsPath
 
                                             match processingResult with
                                             | TextProcessor.OpenSettings ->
@@ -363,6 +368,9 @@ let main argv =
                                                 Logger.info (sprintf "Launching application(s) for command: %s" openCommand.Keyword)
                                                 overlayManager.Hide()
                                                 do! Async.Sleep(400)
+
+                                                // Track open command usage for analytics
+                                                Settings.incrementOpenCommandUsage openCommand.Keyword openCommandsPath
 
                                                 // Execute the open command
                                                 let results = ApplicationLauncher.executeOpenCommand openCommand

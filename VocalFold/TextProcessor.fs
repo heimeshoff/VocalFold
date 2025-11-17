@@ -66,12 +66,12 @@ let storeLastTranscription (text: string) : unit =
 let getLastTranscription () : string option = lastTranscription
 
 /// Process transcribed text and apply keyword replacements
-/// Returns the processed text with all applicable keyword replacements applied
-let processTranscription (text: string) (replacements: Settings.KeywordReplacement list) : string =
+/// Returns tuple of (processed text, list of used keywords)
+let processTranscription (text: string) (replacements: Settings.KeywordReplacement list) : string * string list =
     try
         // If no replacements or empty text, return original
         if List.isEmpty replacements || String.IsNullOrEmpty(text) then
-            text
+            (text, [])
         else
             Logger.debug (sprintf "Processing text with %d keyword replacements" replacements.Length)
 
@@ -81,9 +81,10 @@ let processTranscription (text: string) (replacements: Settings.KeywordReplaceme
                 replacements
                 |> List.sortByDescending (fun r -> r.Keyword.Length)
 
-            // Apply each replacement
+            // Apply each replacement and track used keywords
             let mutable processedText = text
             let mutable replacementCount = 0
+            let mutable usedKeywords = []
 
             for replacement in sortedReplacements do
                 if not (String.IsNullOrEmpty(replacement.Keyword)) then
@@ -96,6 +97,7 @@ let processTranscription (text: string) (replacements: Settings.KeywordReplaceme
                         if matches.Count > 0 then
                             processedText <- regex.Replace(processedText, replacement.Replacement)
                             replacementCount <- replacementCount + matches.Count
+                            usedKeywords <- replacement.Keyword :: usedKeywords  // Track used keyword
                             Logger.debug (sprintf "Replaced %d occurrence(s) of '%s' with '%s'"
                                 matches.Count
                                 replacement.Keyword
@@ -114,11 +116,11 @@ let processTranscription (text: string) (replacements: Settings.KeywordReplaceme
             else
                 Logger.debug "No keyword replacements applied (no matches found)"
 
-            processedText
+            (processedText, List.rev usedKeywords)
     with
     | ex ->
         Logger.logException ex "Error in processTranscription, returning original text"
-        text  // Return original text on error
+        (text, [])  // Return original text on error
 
 /// Create a keyword replacement with default values
 let createKeywordReplacement (keyword: string) (replacement: string) : Settings.KeywordReplacement =
@@ -126,6 +128,7 @@ let createKeywordReplacement (keyword: string) (replacement: string) : Settings.
         Keyword = keyword
         Replacement = replacement
         Category = None  // Default to no category
+        UsageCount = None  // Default to no usage
     }
 
 /// Validate a keyword replacement
@@ -141,17 +144,18 @@ let validateKeywordReplacement (replacement: Settings.KeywordReplacement) : stri
 let getExampleReplacements () : Settings.KeywordReplacement list =
     [
         // Punctuation shortcuts
-        { Keyword = "comma"; Replacement = ","; Category = Some "Punctuation" }
-        { Keyword = "period"; Replacement = "."; Category = Some "Punctuation" }
-        { Keyword = "question mark"; Replacement = "?"; Category = Some "Punctuation" }
-        { Keyword = "exclamation mark"; Replacement = "!"; Category = Some "Punctuation" }
-        { Keyword = "new line"; Replacement = "\n"; Category = Some "Punctuation" }
+        { Keyword = "comma"; Replacement = ","; Category = Some "Punctuation"; UsageCount = None }
+        { Keyword = "period"; Replacement = "."; Category = Some "Punctuation"; UsageCount = None }
+        { Keyword = "question mark"; Replacement = "?"; Category = Some "Punctuation"; UsageCount = None }
+        { Keyword = "exclamation mark"; Replacement = "!"; Category = Some "Punctuation"; UsageCount = None }
+        { Keyword = "new line"; Replacement = "\n"; Category = Some "Punctuation"; UsageCount = None }
 
         // Email signature example
         {
             Keyword = "German email footer"
             Replacement = "Mit freundlichen Grüßen\nIhr VocalFold Team"
             Category = Some "Email Templates"
+            UsageCount = None
         }
 
         // Code snippet example
@@ -159,12 +163,20 @@ let getExampleReplacements () : Settings.KeywordReplacement list =
             Keyword = "main function"
             Replacement = "let main argv =\n    printfn \"Hello, World!\"\n    0"
             Category = Some "Code Snippets"
+            UsageCount = None
         }
     ]
 
+/// Track keyword usage for analytics
+let trackKeywordUsage (usedKeywords: string list) (keywordsFilePath: string) : unit =
+    // Increment usage count for each keyword that was used
+    for keyword in usedKeywords do
+        Settings.incrementKeywordUsage keyword keywordsFilePath
+
 /// Process transcription and check for special commands
 /// This is the main entry point that should be used instead of processTranscription directly
-let processTranscriptionWithCommands (text: string) (replacements: Settings.KeywordReplacement list) : ProcessingResult =
+/// Returns tuple of (ProcessingResult, list of used keywords)
+let processTranscriptionWithCommands (text: string) (replacements: Settings.KeywordReplacement list) : ProcessingResult * string list =
     try
         // Check for special built-in commands (case-insensitive, punctuation removed)
         let normalizedText =
@@ -180,18 +192,18 @@ let processTranscriptionWithCommands (text: string) (replacements: Settings.Keyw
         // Check for "open settings" command (exact match after normalization)
         if normalizedText = "open settings" then
             Logger.info "Detected 'open settings' command"
-            OpenSettings
+            (OpenSettings, [])
         // Check for custom "open [keyword]" commands
         elif normalizedText.StartsWith("open ") then
             match tryMatchOpenCommand normalizedText with
             | Some openCommand ->
                 Logger.info (sprintf "Detected custom open command: %s" openCommand.Keyword)
-                OpenApplication openCommand
+                (OpenApplication openCommand, [])
             | None ->
                 // No matching open command, process as normal text
                 Logger.debug "No matching open command found, processing as text"
-                let processedText = processTranscription text replacements
-                TypeText processedText
+                let (processedText, usedKeywords) = processTranscription text replacements
+                (TypeText processedText, usedKeywords)
         // Check for "repeat message" command (exact match after normalization)
         elif normalizedText = "repeat message" then
             Logger.info "Detected 'repeat message' command"
@@ -204,17 +216,17 @@ let processTranscriptionWithCommands (text: string) (replacements: Settings.Keyw
                 let regex = new Regex(pattern, RegexOptions.IgnoreCase)
                 let resultText = regex.Replace(text, lastText)
                 // Process the result text with keyword replacements
-                let processedText = processTranscription resultText replacements
-                TypeText processedText
+                let (processedText, usedKeywords) = processTranscription resultText replacements
+                (TypeText processedText, usedKeywords)
             | None ->
                 Logger.warning "No previous transcription available to repeat"
-                TypeText text  // Just type the original text if no previous transcription
+                (TypeText text, [])  // Just type the original text if no previous transcription
         else
             // No special command detected, process normally
-            let processedText = processTranscription text replacements
-            TypeText processedText
+            let (processedText, usedKeywords) = processTranscription text replacements
+            (TypeText processedText, usedKeywords)
     with
     | ex ->
         Logger.logException ex "Error in processTranscriptionWithCommands"
         // On error, return the original text
-        TypeText text
+        (TypeText text, [])

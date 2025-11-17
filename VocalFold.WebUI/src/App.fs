@@ -123,7 +123,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
         { model with IsRecordingHotkey = false; PendingHotkey = None }, Cmd.none
 
     | AddKeyword ->
-        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = ""; Category = None }) }, Cmd.none
+        { model with EditingKeyword = Some (-1, { Keyword = ""; Replacement = ""; Category = None; UsageCount = None }) }, Cmd.none
 
     | EditKeyword index ->
         match model.Settings with
@@ -210,7 +210,7 @@ let update (msg: Msg) (model: Model) : Model * Cmd<Msg> =
             { model with OpenCommands = LoadingState.Error err }, Cmd.none
 
     | AddOpenCommand ->
-        { model with EditingOpenCommand = Some (-1, { Keyword = ""; Description = None; Targets = []; LaunchDelay = None }) }, Cmd.none
+        { model with EditingOpenCommand = Some (-1, { Keyword = ""; Description = None; Targets = []; LaunchDelay = None; UsageCount = None }) }, Cmd.none
 
     | EditOpenCommand index ->
         match model.OpenCommands with

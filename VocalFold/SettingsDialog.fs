@@ -553,6 +553,7 @@ let show (currentSettings: Settings.AppSettings) : DialogResult =
                     Keyword = keywordTextBox.Text.Trim()
                     Replacement = replacementTextBox.Text
                     Category = None
+                    UsageCount = None
                 }
                 dlg.DialogResult <- DialogResult.OK
         )

@@ -35,6 +35,10 @@ type KeywordReplacement = {
     /// Optional category name
     [<JsonPropertyName("category")>]
     Category: string option
+
+    /// Number of times this keyword has been used
+    [<JsonPropertyName("usageCount")>]
+    UsageCount: int option
 }
 
 /// External keywords data (stored in separate file for cloud sync)
@@ -95,6 +99,10 @@ type OpenCommand = {
     /// Optional delay between launching multiple targets (milliseconds)
     [<JsonPropertyName("launchDelay")>]
     LaunchDelay: int option
+
+    /// Number of times this command has been used
+    [<JsonPropertyName("usageCount")>]
+    UsageCount: int option
 }
 
 /// Open commands data (stored in separate file)
@@ -651,3 +659,44 @@ let saveOpenCommands (filePath: string) (data: OpenCommandsData) : Result<unit, 
         let errorMsg = sprintf "Failed to save open commands: %s" ex.Message
         Logger.error errorMsg
         Error errorMsg
+
+/// Increment usage count for a keyword and save it back to file
+let incrementKeywordUsage (keyword: string) (filePath: string) : unit =
+    try
+        let data = loadKeywordData filePath
+        let updatedReplacements =
+            data.KeywordReplacements
+            |> List.map (fun kr ->
+                if kr.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase) then
+                    let currentCount = defaultArg kr.UsageCount 0
+                    { kr with UsageCount = Some (currentCount + 1) }
+                else
+                    kr
+            )
+        let updatedData = { data with KeywordReplacements = updatedReplacements }
+        saveKeywordData filePath updatedData |> ignore
+        Logger.debug (sprintf "Incremented usage count for keyword: %s" keyword)
+    with
+    | ex ->
+        Logger.warning (sprintf "Failed to increment keyword usage count: %s" ex.Message)
+
+/// Increment usage count for an open command and save it back to file
+let incrementOpenCommandUsage (keyword: string) (filePath: string) : unit =
+    try
+        let data = loadOpenCommands filePath
+        let updatedCommands =
+            data.OpenCommands
+            |> List.map (fun cmd ->
+                if cmd.Keyword.Equals(keyword, StringComparison.OrdinalIgnoreCase) then
+                    let currentCount = defaultArg cmd.UsageCount 0
+                    { cmd with UsageCount = Some (currentCount + 1) }
+                else
+                    cmd
+            )
+        let updatedData = { data with OpenCommands = updatedCommands }
+        match saveOpenCommands filePath updatedData with
+        | Ok () -> Logger.debug (sprintf "Incremented usage count for open command: %s" keyword)
+        | Error err -> Logger.warning (sprintf "Failed to save open command usage count: %s" err)
+    with
+    | ex ->
+        Logger.warning (sprintf "Failed to increment open command usage count: %s" ex.Message)
