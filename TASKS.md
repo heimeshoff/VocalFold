@@ -5117,3 +5117,1743 @@ VocalFold allows you to choose which microphone to use for voice input.
 **Estimated Time**: 10-14 hours (includes backend, frontend, testing, documentation)
 
 **Next Task**: Implement Phase 16 (Task 16.1 - Backend - Microphone Data Model)
+
+---
+
+## Phase 17: Custom "Open" Commands ⬜
+
+### Overview
+
+Currently VocalFold supports the "open settings" command to launch the settings UI. Phase 17 extends this functionality to allow users to define custom "open [keyword]" commands that launch applications, open URLs, or execute multiple programs simultaneously.
+
+**Feature Summary**:
+- Voice command: "open [keyword]" launches configured application(s)
+- Each keyword can open a single application or multiple applications
+- Applications can be executables (.exe) or URLs (http://, https://)
+- Configuration managed via web UI editor
+- Commands stored in external file (cloud sync compatible)
+
+**Example Use Cases**:
+- "open browser" → launches Chrome at https://google.com
+- "open workspace" → launches VS Code, opens project folder, starts dev server
+- "open email" → launches Outlook and opens Gmail in browser
+- "open design tools" → launches Figma, Adobe XD, and reference folder
+
+**User Stories**:
+
+**US-17.1: Quick Application Launch**
+```
+AS A user working on multiple projects
+I WANT to say "open workspace" and have all my tools launch
+SO THAT I can start working immediately without clicking
+```
+
+**US-17.2: Custom Shortcut Configuration**
+```
+AS A user with specific workflow needs
+I WANT to define custom voice commands for my applications
+SO THAT I can personalize VocalFold to my workflow
+```
+
+**US-17.3: Multi-Application Launch**
+```
+AS A user with complex workflows
+I WANT to launch multiple related applications with one command
+SO THAT I can set up my workspace efficiently
+```
+
+---
+
+### Architecture
+
+**Data Model**:
+```fsharp
+/// Application or URL to launch
+[<CLIMutable>]
+type LaunchTarget = {
+    /// Display name for this target
+    [<JsonPropertyName("name")>]
+    Name: string
+
+    /// Type of target: "executable", "url", or "folder"
+    [<JsonPropertyName("type")>]
+    Type: string
+
+    /// Path to executable, URL, or folder path
+    [<JsonPropertyName("path")>]
+    Path: string
+
+    /// Optional command-line arguments (for executables)
+    [<JsonPropertyName("arguments")>]
+    Arguments: string option
+
+    /// Optional working directory (for executables)
+    [<JsonPropertyName("workingDirectory")>]
+    WorkingDirectory: string option
+}
+
+/// Custom "open" command configuration
+[<CLIMutable>]
+type OpenCommand = {
+    /// The keyword to trigger this command (e.g., "browser", "workspace")
+    [<JsonPropertyName("keyword")>]
+    Keyword: string
+
+    /// Optional description
+    [<JsonPropertyName("description")>]
+    Description: string option
+
+    /// List of targets to launch (one or more)
+    [<JsonPropertyName("targets")>]
+    Targets: LaunchTarget list
+
+    /// Optional delay between launching multiple targets (milliseconds)
+    [<JsonPropertyName("launchDelay")>]
+    LaunchDelay: int option
+}
+
+/// Open commands data (stored in separate file)
+[<CLIMutable>]
+type OpenCommandsData = {
+    /// List of custom open commands
+    [<JsonPropertyName("openCommands")>]
+    OpenCommands: OpenCommand list
+
+    /// Schema version for future migrations
+    [<JsonPropertyName("version")>]
+    Version: string
+}
+```
+
+**Storage**:
+- File: `%APPDATA%/VocalFold/open-commands.json`
+- Format: JSON with indentation
+- Configurable path in settings (for cloud sync)
+
+**Processing Flow**:
+```
+Voice: "open browser"
+  ↓
+Transcription: "open browser"
+  ↓
+TextProcessor.processTranscriptionWithCommands
+  ↓
+Check if matches "open [keyword]" pattern
+  ↓
+Look up keyword in OpenCommands list
+  ↓
+Return: OpenApplication (LaunchTarget list)
+  ↓
+Program.fs launches each target
+```
+
+**Updated ProcessingResult**:
+```fsharp
+type ProcessingResult =
+    | TypeText of string
+    | OpenSettings
+    | OpenApplication of LaunchTarget list  // NEW
+```
+
+---
+
+### Task 17.1: Backend - Open Commands Data Model
+
+**Objective**: Define data structures for custom open commands
+
+**Files to Modify**:
+- `VocalFold/Settings.fs`
+
+**Implementation**:
+
+**Settings.fs - Add new types**:
+```fsharp
+/// Application or URL to launch
+[<CLIMutable>]
+type LaunchTarget = {
+    /// Display name for this target
+    [<JsonPropertyName("name")>]
+    Name: string
+
+    /// Type of target: "executable", "url", or "folder"
+    [<JsonPropertyName("type")>]
+    Type: string
+
+    /// Path to executable, URL, or folder path
+    [<JsonPropertyName("path")>]
+    Path: string
+
+    /// Optional command-line arguments (for executables)
+    [<JsonPropertyName("arguments")>]
+    Arguments: string option
+
+    /// Optional working directory (for executables)
+    [<JsonPropertyName("workingDirectory")>]
+    WorkingDirectory: string option
+}
+
+/// Custom "open" command configuration
+[<CLIMutable>]
+type OpenCommand = {
+    /// The keyword to trigger this command
+    [<JsonPropertyName("keyword")>]
+    Keyword: string
+
+    /// Optional description
+    [<JsonPropertyName("description")>]
+    Description: string option
+
+    /// List of targets to launch
+    [<JsonPropertyName("targets")>]
+    Targets: LaunchTarget list
+
+    /// Optional delay between launches (ms)
+    [<JsonPropertyName("launchDelay")>]
+    LaunchDelay: int option
+}
+
+/// Open commands data (stored in separate file)
+[<CLIMutable>]
+type OpenCommandsData = {
+    /// List of custom open commands
+    [<JsonPropertyName("openCommands")>]
+    OpenCommands: OpenCommand list
+
+    /// Schema version
+    [<JsonPropertyName("version")>]
+    Version: string
+}
+
+/// Default open commands data
+let defaultOpenCommandsData = {
+    OpenCommands = []
+    Version = "1.0"
+}
+```
+
+**Add to AppSettings**:
+```fsharp
+type AppSettings = {
+    // ... existing fields ...
+
+    /// Path to external open commands file (if None, uses default location)
+    [<JsonPropertyName("openCommandsFilePath")>]
+    OpenCommandsFilePath: string option
+}
+
+// Update defaultSettings
+let defaultSettings = {
+    // ... existing defaults ...
+    OpenCommandsFilePath = None  // Use default location
+}
+```
+
+**Helper Functions**:
+```fsharp
+/// Get the default open commands file path
+let getDefaultOpenCommandsFilePath () =
+    Path.Combine(getSettingsDirectory(), "open-commands.json")
+
+/// Get the open commands file path from settings
+let getOpenCommandsFilePath (settings: AppSettings) : string =
+    match settings.OpenCommandsFilePath with
+    | Some path when not (String.IsNullOrWhiteSpace(path)) -> path
+    | _ -> getDefaultOpenCommandsFilePath()
+
+/// Load open commands from file
+let loadOpenCommands (filePath: string) : OpenCommandsData =
+    try
+        if File.Exists(filePath) then
+            let json = File.ReadAllText(filePath)
+            JsonSerializer.Deserialize<OpenCommandsData>(json, jsonOptions)
+        else
+            // Return default data if file doesn't exist
+            defaultOpenCommandsData
+    with
+    | ex ->
+        Logger.logException ex (sprintf "Failed to load open commands from %s" filePath)
+        defaultOpenCommandsData
+
+/// Save open commands to file
+let saveOpenCommands (filePath: string) (data: OpenCommandsData) : Result<unit, string> =
+    try
+        let directory = Path.GetDirectoryName(filePath)
+        if not (Directory.Exists(directory)) then
+            Directory.CreateDirectory(directory) |> ignore
+
+        let json = JsonSerializer.Serialize(data, jsonOptions)
+        File.WriteAllText(filePath, json)
+        Logger.info (sprintf "Saved %d open commands to %s" data.OpenCommands.Length filePath)
+        Ok ()
+    with
+    | ex ->
+        let errorMsg = sprintf "Failed to save open commands: %s" ex.Message
+        Logger.logException ex errorMsg
+        Error errorMsg
+```
+
+**Validation Functions**:
+```fsharp
+/// Validate a launch target
+let validateLaunchTarget (target: LaunchTarget) : string option =
+    if String.IsNullOrWhiteSpace(target.Name) then
+        Some "Target name cannot be empty"
+    elif String.IsNullOrWhiteSpace(target.Type) then
+        Some "Target type cannot be empty"
+    elif target.Type <> "executable" && target.Type <> "url" && target.Type <> "folder" then
+        Some "Target type must be 'executable', 'url', or 'folder'"
+    elif String.IsNullOrWhiteSpace(target.Path) then
+        Some "Target path cannot be empty"
+    else
+        None
+
+/// Validate an open command
+let validateOpenCommand (command: OpenCommand) : string option =
+    if String.IsNullOrWhiteSpace(command.Keyword) then
+        Some "Keyword cannot be empty"
+    elif command.Keyword.ToLowerInvariant() = "settings" then
+        Some "Keyword 'settings' is reserved for built-in command"
+    elif List.isEmpty command.Targets then
+        Some "Command must have at least one target"
+    else
+        // Validate all targets
+        command.Targets
+        |> List.tryPick validateLaunchTarget
+```
+
+**Acceptance**:
+- [ ] LaunchTarget type defined with all fields
+- [ ] OpenCommand type defined with validation
+- [ ] OpenCommandsData type for file storage
+- [ ] Load/save functions work correctly
+- [ ] Validation prevents invalid commands
+- [ ] Default empty data structure created
+- [ ] JSON serialization works properly
+- [ ] File operations handle errors gracefully
+
+---
+
+### Task 17.2: Backend - Application Launcher Module
+
+**Objective**: Implement logic to launch applications, URLs, and folders
+
+**Files to Create**:
+- `VocalFold/ApplicationLauncher.fs`
+
+**Implementation**:
+
+**ApplicationLauncher.fs**:
+```fsharp
+module ApplicationLauncher
+
+open System
+open System.Diagnostics
+open Settings
+
+/// Result of launching an application
+type LaunchResult = {
+    Target: LaunchTarget
+    Success: bool
+    ErrorMessage: string option
+    ProcessId: int option
+}
+
+/// Launch a single URL in the default browser
+let private launchUrl (url: string) : LaunchResult =
+    try
+        Logger.info (sprintf "Launching URL: %s" url)
+
+        // Use Process.Start with UseShellExecute to open URL in default browser
+        let psi = new ProcessStartInfo()
+        psi.FileName <- url
+        psi.UseShellExecute <- true
+
+        let proc = Process.Start(psi)
+
+        {
+            Target = { Name = url; Type = "url"; Path = url; Arguments = None; WorkingDirectory = None }
+            Success = true
+            ErrorMessage = None
+            ProcessId = if proc <> null then Some proc.Id else None
+        }
+    with
+    | ex ->
+        Logger.logException ex (sprintf "Failed to launch URL: %s" url)
+        {
+            Target = { Name = url; Type = "url"; Path = url; Arguments = None; WorkingDirectory = None }
+            Success = false
+            ErrorMessage = Some ex.Message
+            ProcessId = None
+        }
+
+/// Launch a single executable
+let private launchExecutable (target: LaunchTarget) : LaunchResult =
+    try
+        Logger.info (sprintf "Launching executable: %s" target.Path)
+
+        let psi = new ProcessStartInfo()
+        psi.FileName <- target.Path
+        psi.UseShellExecute <- true
+
+        // Set arguments if provided
+        match target.Arguments with
+        | Some args when not (String.IsNullOrWhiteSpace(args)) ->
+            psi.Arguments <- args
+            Logger.debug (sprintf "  Arguments: %s" args)
+        | _ -> ()
+
+        // Set working directory if provided
+        match target.WorkingDirectory with
+        | Some workDir when not (String.IsNullOrWhiteSpace(workDir)) ->
+            psi.WorkingDirectory <- workDir
+            Logger.debug (sprintf "  Working directory: %s" workDir)
+        | _ -> ()
+
+        let proc = Process.Start(psi)
+
+        {
+            Target = target
+            Success = true
+            ErrorMessage = None
+            ProcessId = if proc <> null then Some proc.Id else None
+        }
+    with
+    | ex ->
+        Logger.logException ex (sprintf "Failed to launch executable: %s" target.Path)
+        {
+            Target = target
+            Success = false
+            ErrorMessage = Some ex.Message
+            ProcessId = None
+        }
+
+/// Open a folder in Windows Explorer
+let private openFolder (path: string) : LaunchResult =
+    try
+        Logger.info (sprintf "Opening folder: %s" path)
+
+        let psi = new ProcessStartInfo()
+        psi.FileName <- "explorer.exe"
+        psi.Arguments <- sprintf "\"%s\"" path
+        psi.UseShellExecute <- true
+
+        let proc = Process.Start(psi)
+
+        {
+            Target = { Name = path; Type = "folder"; Path = path; Arguments = None; WorkingDirectory = None }
+            Success = true
+            ErrorMessage = None
+            ProcessId = if proc <> null then Some proc.Id else None
+        }
+    with
+    | ex ->
+        Logger.logException ex (sprintf "Failed to open folder: %s" path)
+        {
+            Target = { Name = path; Type = "folder"; Path = path; Arguments = None; WorkingDirectory = None }
+            Success = false
+            ErrorMessage = Some ex.Message
+            ProcessId = None
+        }
+
+/// Launch a single target (URL, executable, or folder)
+let launchTarget (target: LaunchTarget) : LaunchResult =
+    Logger.info (sprintf "Launching target: %s (type: %s)" target.Name target.Type)
+
+    match target.Type.ToLowerInvariant() with
+    | "url" -> launchUrl target.Path
+    | "executable" -> launchExecutable target
+    | "folder" -> openFolder target.Path
+    | unknown ->
+        Logger.warning (sprintf "Unknown target type: %s" unknown)
+        {
+            Target = target
+            Success = false
+            ErrorMessage = Some (sprintf "Unknown target type: %s" unknown)
+            ProcessId = None
+        }
+
+/// Launch multiple targets with optional delay between launches
+let launchTargets (targets: LaunchTarget list) (delayMs: int option) : LaunchResult list =
+    Logger.info (sprintf "Launching %d target(s)" targets.Length)
+
+    let delay = defaultArg delayMs 500  // Default 500ms delay between launches
+
+    targets
+    |> List.mapi (fun index target ->
+        // Add delay before launching (except first one)
+        if index > 0 && delay > 0 then
+            Logger.debug (sprintf "Waiting %dms before next launch..." delay)
+            System.Threading.Thread.Sleep(delay)
+
+        launchTarget target
+    )
+
+/// Launch all targets for an open command
+let executeOpenCommand (command: OpenCommand) : LaunchResult list =
+    Logger.info (sprintf "Executing open command: %s" command.Keyword)
+    Logger.debug (sprintf "  Description: %s" (defaultArg command.Description "N/A"))
+    Logger.debug (sprintf "  Targets: %d" command.Targets.Length)
+
+    let results = launchTargets command.Targets command.LaunchDelay
+
+    // Log summary
+    let successCount = results |> List.filter (fun r -> r.Success) |> List.length
+    let failCount = results.Length - successCount
+
+    if failCount = 0 then
+        Logger.info (sprintf "✓ Successfully launched all %d target(s)" successCount)
+    else
+        Logger.warning (sprintf "⚠ Launched %d/%d targets (%d failed)" successCount results.Length failCount)
+
+    results
+```
+
+**Acceptance**:
+- [ ] Can launch URLs in default browser
+- [ ] Can launch executable files
+- [ ] Can open folders in Explorer
+- [ ] Supports command-line arguments for executables
+- [ ] Supports working directory for executables
+- [ ] Handles multiple targets with delays
+- [ ] Error handling for invalid paths
+- [ ] Error handling for missing executables
+- [ ] Returns detailed launch results
+- [ ] Logs all operations
+
+---
+
+### Task 17.3: Backend - Text Processor Integration
+
+**Objective**: Integrate custom open commands into transcription processing
+
+**Files to Modify**:
+- `VocalFold/TextProcessor.fs`
+
+**Implementation**:
+
+**Update ProcessingResult type**:
+```fsharp
+/// Result of processing transcribed text
+type ProcessingResult =
+    | TypeText of string        // Text should be typed
+    | OpenSettings             // Open settings dialog
+    | OpenApplication of Settings.OpenCommand  // NEW: Execute custom open command
+```
+
+**Add open command matching**:
+```fsharp
+/// Load open commands data from file (cached)
+let mutable private openCommandsCache: Settings.OpenCommandsData option = None
+let mutable private openCommandsFilePath: string option = None
+
+/// Reload open commands from file
+let reloadOpenCommands (filePath: string) : unit =
+    try
+        let data = Settings.loadOpenCommands filePath
+        openCommandsCache <- Some data
+        openCommandsFilePath <- Some filePath
+        Logger.info (sprintf "Loaded %d open command(s) from %s" data.OpenCommands.Length filePath)
+    with
+    | ex ->
+        Logger.logException ex "Failed to reload open commands"
+        openCommandsCache <- Some Settings.defaultOpenCommandsData
+
+/// Get current open commands
+let getOpenCommands () : Settings.OpenCommand list =
+    match openCommandsCache with
+    | Some data -> data.OpenCommands
+    | None -> []
+
+/// Find an open command by keyword (case-insensitive)
+let findOpenCommand (keyword: string) : Settings.OpenCommand option =
+    let normalizedKeyword = keyword.Trim().ToLowerInvariant()
+    getOpenCommands()
+    |> List.tryFind (fun cmd -> cmd.Keyword.ToLowerInvariant() = normalizedKeyword)
+
+/// Check if text matches "open [keyword]" pattern
+let private tryMatchOpenCommand (normalizedText: string) : Settings.OpenCommand option =
+    // Pattern: "open <keyword>"
+    if normalizedText.StartsWith("open ") && normalizedText.Length > 5 then
+        let keyword = normalizedText.Substring(5).Trim()
+
+        // Don't match "open settings" (built-in command)
+        if keyword <> "settings" then
+            Logger.debug (sprintf "Checking for open command with keyword: %s" keyword)
+            findOpenCommand keyword
+        else
+            None
+    else
+        None
+```
+
+**Update processTranscriptionWithCommands**:
+```fsharp
+/// Process transcription and check for special commands
+let processTranscriptionWithCommands (text: string) (replacements: Settings.KeywordReplacement list) : ProcessingResult =
+    try
+        // Normalize text for command matching
+        let normalizedText =
+            let lowered = text.Trim().ToLowerInvariant()
+            let noPunctuation = Regex.Replace(lowered, @"[^\w\s]", "")
+            let singleSpaced = Regex.Replace(noPunctuation, @"\s+", " ")
+            singleSpaced.Trim()
+
+        Logger.debug (sprintf "Normalized text for command matching: \"%s\"" normalizedText)
+
+        // Check for "open settings" command (built-in, exact match)
+        if normalizedText = "open settings" then
+            Logger.info "Detected 'open settings' command"
+            OpenSettings
+
+        // Check for custom "open [keyword]" commands
+        elif normalizedText.StartsWith("open ") then
+            match tryMatchOpenCommand normalizedText with
+            | Some openCommand ->
+                Logger.info (sprintf "Detected custom open command: %s" openCommand.Keyword)
+                OpenApplication openCommand
+            | None ->
+                // No matching open command, process as normal text
+                Logger.debug "No matching open command found, processing as text"
+                let processedText = processTranscription text replacements
+                TypeText processedText
+
+        // Check for "repeat message" command
+        elif normalizedText = "repeat message" then
+            // ... existing repeat message logic ...
+            Logger.info "Detected 'repeat message' command"
+            match lastTranscription with
+            | Some lastText ->
+                let pattern = @"\brepeat message\b"
+                let regex = new Regex(pattern, RegexOptions.IgnoreCase)
+                let resultText = regex.Replace(text, lastText)
+                let processedText = processTranscription resultText replacements
+                TypeText processedText
+            | None ->
+                Logger.warning "No previous transcription available to repeat"
+                TypeText text
+        else
+            // No special command detected, process normally
+            let processedText = processTranscription text replacements
+            TypeText processedText
+    with
+    | ex ->
+        Logger.logException ex "Error in processTranscriptionWithCommands"
+        TypeText text
+```
+
+**Acceptance**:
+- [ ] ProcessingResult has OpenApplication variant
+- [ ] "open [keyword]" pattern recognized
+- [ ] Case-insensitive keyword matching
+- [ ] Built-in "open settings" still works
+- [ ] Unknown keywords fall back to normal text
+- [ ] Open commands loaded from file
+- [ ] Reload function updates cache
+- [ ] Error handling for missing commands file
+
+---
+
+### Task 17.4: Backend - Program.fs Integration
+
+**Objective**: Handle OpenApplication result in main program flow
+
+**Files to Modify**:
+- `VocalFold/Program.fs`
+
+**Implementation**:
+
+**Add to project references** (in .fsproj):
+```xml
+<Compile Include="ApplicationLauncher.fs" />
+```
+
+**Update transcription handling**:
+```fsharp
+// In the main hotkey callback, after transcription:
+match TextProcessor.processTranscriptionWithCommands transcribedText keywordReplacements with
+| TextProcessor.TypeText processedText ->
+    // Existing text typing logic
+    Logger.info (sprintf "Typing text: \"%s\""
+        (if processedText.Length > 50 then processedText.Substring(0, 47) + "..." else processedText))
+    TextInput.typeText processedText
+    TextProcessor.storeLastTranscription processedText
+
+| TextProcessor.OpenSettings ->
+    // Existing open settings logic
+    Logger.info "Opening settings in browser..."
+    match WebServer.getServerUrl() with
+    | Some url ->
+        try
+            let psi = new System.Diagnostics.ProcessStartInfo()
+            psi.FileName <- url
+            psi.UseShellExecute <- true
+            System.Diagnostics.Process.Start(psi) |> ignore
+            Logger.info (sprintf "✓ Opened settings at %s" url)
+        with
+        | ex ->
+            Logger.logException ex "Failed to open settings in browser"
+    | None ->
+        Logger.warning "Web server not running, cannot open settings"
+
+| TextProcessor.OpenApplication openCommand ->
+    // NEW: Launch application(s)
+    Logger.info (sprintf "Launching application(s) for command: %s" openCommand.Keyword)
+    let results = ApplicationLauncher.executeOpenCommand openCommand
+
+    // Check if all launches succeeded
+    let failedResults = results |> List.filter (fun r -> not r.Success)
+    if List.isEmpty failedResults then
+        Logger.info (sprintf "✓ Successfully launched all targets for '%s'" openCommand.Keyword)
+    else
+        Logger.warning (sprintf "⚠ Some targets failed to launch for '%s':" openCommand.Keyword)
+        failedResults |> List.iter (fun r ->
+            Logger.warning (sprintf "  - %s: %s" r.Target.Name (defaultArg r.ErrorMessage "Unknown error"))
+        )
+```
+
+**Load open commands on startup**:
+```fsharp
+// After loading settings, load open commands
+let openCommandsPath = Settings.getOpenCommandsFilePath currentSettings
+TextProcessor.reloadOpenCommands openCommandsPath
+Logger.info "Open commands loaded"
+```
+
+**Reload on settings change** (in web server settings update handler):
+```fsharp
+// After saving settings, check if open commands path changed
+let oldPath = Settings.getOpenCommandsFilePath oldSettings
+let newPath = Settings.getOpenCommandsFilePath newSettings
+if oldPath <> newPath then
+    Logger.info (sprintf "Open commands file path changed, reloading from: %s" newPath)
+    TextProcessor.reloadOpenCommands newPath
+```
+
+**Acceptance**:
+- [ ] OpenApplication result handled in main flow
+- [ ] ApplicationLauncher.executeOpenCommand called
+- [ ] Launch results logged appropriately
+- [ ] Errors don't crash the application
+- [ ] Open commands loaded on startup
+- [ ] Open commands reloaded when path changes
+- [ ] Success/failure messages clear
+
+---
+
+### Task 17.5: Backend - REST API Endpoints
+
+**Objective**: Create REST API for managing custom open commands
+
+**Files to Modify**:
+- `VocalFold/WebServer.fs`
+
+**New Endpoints**:
+
+```
+GET    /api/open-commands           - Get all open commands
+POST   /api/open-commands           - Create new open command
+PUT    /api/open-commands/{index}   - Update open command by index
+DELETE /api/open-commands/{index}   - Delete open command by index
+POST   /api/open-commands/test      - Test launch a command without saving
+```
+
+**Implementation**:
+
+**WebServer.fs - Add handlers**:
+```fsharp
+/// GET /api/open-commands - Get all open commands
+let getOpenCommandsHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: GET /api/open-commands"
+
+                let filePath = Settings.getOpenCommandsFilePath !currentSettings
+                let data = Settings.loadOpenCommands filePath
+
+                Logger.info (sprintf "Returning %d open command(s)" data.OpenCommands.Length)
+                return! json data.OpenCommands next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to get open commands"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// POST /api/open-commands - Create new open command
+let createOpenCommandHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: POST /api/open-commands"
+
+                let! newCommand = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Creating open command: %s" newCommand.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand newCommand with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    let filePath = Settings.getOpenCommandsFilePath !currentSettings
+                    let data = Settings.loadOpenCommands filePath
+
+                    // Check for duplicate keyword
+                    let isDuplicate =
+                        data.OpenCommands
+                        |> List.exists (fun cmd ->
+                            cmd.Keyword.ToLowerInvariant() = newCommand.Keyword.ToLowerInvariant())
+
+                    if isDuplicate then
+                        Logger.warning (sprintf "Open command with keyword '%s' already exists" newCommand.Keyword)
+                        ctx.SetStatusCode 400
+                        return! json {| error = "Command with this keyword already exists" |} next ctx
+                    else
+                        // Add new command
+                        let updatedData = {
+                            data with
+                                OpenCommands = data.OpenCommands @ [newCommand]
+                        }
+
+                        match Settings.saveOpenCommands filePath updatedData with
+                        | Ok () ->
+                            // Reload commands in text processor
+                            TextProcessor.reloadOpenCommands filePath
+
+                            Logger.info (sprintf "✓ Created open command: %s" newCommand.Keyword)
+                            ctx.SetStatusCode 201
+                            return! json newCommand next ctx
+                        | Error errorMsg ->
+                            Logger.warning (sprintf "Failed to save open command: %s" errorMsg)
+                            ctx.SetStatusCode 500
+                            return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to create open command"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// PUT /api/open-commands/{index} - Update open command
+let updateOpenCommandHandler (index: int) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug (sprintf "API: PUT /api/open-commands/%d" index)
+
+                let! updatedCommand = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Updating open command at index %d: %s" index updatedCommand.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand updatedCommand with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    let filePath = Settings.getOpenCommandsFilePath !currentSettings
+                    let data = Settings.loadOpenCommands filePath
+
+                    if index < 0 || index >= data.OpenCommands.Length then
+                        Logger.warning (sprintf "Invalid index: %d (max: %d)" index (data.OpenCommands.Length - 1))
+                        ctx.SetStatusCode 404
+                        return! json {| error = "Command not found" |} next ctx
+                    else
+                        // Check for duplicate keyword (excluding current command)
+                        let isDuplicate =
+                            data.OpenCommands
+                            |> List.mapi (fun i cmd -> i, cmd)
+                            |> List.exists (fun (i, cmd) ->
+                                i <> index &&
+                                cmd.Keyword.ToLowerInvariant() = updatedCommand.Keyword.ToLowerInvariant())
+
+                        if isDuplicate then
+                            Logger.warning (sprintf "Open command with keyword '%s' already exists" updatedCommand.Keyword)
+                            ctx.SetStatusCode 400
+                            return! json {| error = "Command with this keyword already exists" |} next ctx
+                        else
+                            // Update command
+                            let updatedCommands =
+                                data.OpenCommands
+                                |> List.mapi (fun i cmd -> if i = index then updatedCommand else cmd)
+
+                            let updatedData = { data with OpenCommands = updatedCommands }
+
+                            match Settings.saveOpenCommands filePath updatedData with
+                            | Ok () ->
+                                // Reload commands in text processor
+                                TextProcessor.reloadOpenCommands filePath
+
+                                Logger.info (sprintf "✓ Updated open command at index %d" index)
+                                return! json updatedCommand next ctx
+                            | Error errorMsg ->
+                                Logger.warning (sprintf "Failed to save open commands: %s" errorMsg)
+                                ctx.SetStatusCode 500
+                                return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex (sprintf "Failed to update open command at index %d" index)
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// DELETE /api/open-commands/{index} - Delete open command
+let deleteOpenCommandHandler (index: int) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug (sprintf "API: DELETE /api/open-commands/%d" index)
+
+                let filePath = Settings.getOpenCommandsFilePath !currentSettings
+                let data = Settings.loadOpenCommands filePath
+
+                if index < 0 || index >= data.OpenCommands.Length then
+                    Logger.warning (sprintf "Invalid index: %d (max: %d)" index (data.OpenCommands.Length - 1))
+                    ctx.SetStatusCode 404
+                    return! json {| error = "Command not found" |} next ctx
+                else
+                    let commandToDelete = data.OpenCommands.[index]
+                    Logger.info (sprintf "Deleting open command: %s" commandToDelete.Keyword)
+
+                    // Remove command
+                    let updatedCommands =
+                        data.OpenCommands
+                        |> List.mapi (fun i cmd -> i, cmd)
+                        |> List.filter (fun (i, _) -> i <> index)
+                        |> List.map snd
+
+                    let updatedData = { data with OpenCommands = updatedCommands }
+
+                    match Settings.saveOpenCommands filePath updatedData with
+                    | Ok () ->
+                        // Reload commands in text processor
+                        TextProcessor.reloadOpenCommands filePath
+
+                        Logger.info (sprintf "✓ Deleted open command: %s" commandToDelete.Keyword)
+                        return! json {| success = true |} next ctx
+                    | Error errorMsg ->
+                        Logger.warning (sprintf "Failed to save open commands: %s" errorMsg)
+                        ctx.SetStatusCode 500
+                        return! json {| error = errorMsg |} next ctx
+            with
+            | ex ->
+                Logger.logException ex (sprintf "Failed to delete open command at index %d" index)
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+
+/// POST /api/open-commands/test - Test launch a command
+let testOpenCommandHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                Logger.debug "API: POST /api/open-commands/test"
+
+                let! command = ctx.BindJsonAsync<Settings.OpenCommand>()
+                Logger.info (sprintf "Testing open command: %s" command.Keyword)
+
+                // Validate the command
+                match Settings.validateOpenCommand command with
+                | Some errorMsg ->
+                    Logger.warning (sprintf "Invalid open command: %s" errorMsg)
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+                | None ->
+                    // Execute the command
+                    let results = ApplicationLauncher.executeOpenCommand command
+
+                    // Convert results to JSON-friendly format
+                    let resultsJson =
+                        results
+                        |> List.map (fun r ->
+                            {|
+                                targetName = r.Target.Name
+                                success = r.Success
+                                errorMessage = r.ErrorMessage
+                                processId = r.ProcessId
+                            |})
+
+                    Logger.info (sprintf "✓ Test completed for: %s" command.Keyword)
+                    return! json {| results = resultsJson |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Failed to test open command"
+                ctx.SetStatusCode 500
+                return! json {| error = ex.Message |} next ctx
+        }
+```
+
+**Add routes**:
+```fsharp
+let webApp =
+    choose [
+        // ... existing routes ...
+
+        // Open Commands API
+        GET  >=> route "/api/open-commands" >=> getOpenCommandsHandler
+        POST >=> route "/api/open-commands" >=> createOpenCommandHandler
+        PUT  >=> routef "/api/open-commands/%i" updateOpenCommandHandler
+        DELETE >=> routef "/api/open-commands/%i" deleteOpenCommandHandler
+        POST >=> route "/api/open-commands/test" >=> testOpenCommandHandler
+
+        // ... rest of routes ...
+    ]
+```
+
+**Acceptance**:
+- [ ] GET /api/open-commands returns all commands
+- [ ] POST /api/open-commands creates new command
+- [ ] PUT /api/open-commands/{index} updates command
+- [ ] DELETE /api/open-commands/{index} deletes command
+- [ ] POST /api/open-commands/test tests without saving
+- [ ] Validation prevents invalid commands
+- [ ] Duplicate keywords rejected
+- [ ] Invalid indices handled gracefully
+- [ ] Changes reload in text processor
+- [ ] Errors return appropriate status codes
+
+---
+
+### Task 17.6: Frontend - Type Definitions
+
+**Objective**: Add TypeScript-style type definitions for open commands
+
+**Files to Modify**:
+- `VocalFold.WebUI/src/Types.fs`
+
+**Implementation**:
+
+```fsharp
+// ============================================================================
+// Open Commands Types
+// ============================================================================
+
+/// Application or URL to launch
+type LaunchTarget = {
+    Name: string
+    Type: string  // "executable", "url", or "folder"
+    Path: string
+    Arguments: string option
+    WorkingDirectory: string option
+}
+
+/// Custom "open" command
+type OpenCommand = {
+    Keyword: string
+    Description: string option
+    Targets: LaunchTarget list
+    LaunchDelay: int option
+}
+
+/// Result of testing a launch
+type TestLaunchResult = {
+    TargetName: string
+    Success: bool
+    ErrorMessage: string option
+    ProcessId: int option
+}
+```
+
+**Acceptance**:
+- [ ] LaunchTarget type matches backend
+- [ ] OpenCommand type matches backend
+- [ ] TestLaunchResult for test results
+- [ ] Types compile in Fable
+
+---
+
+### Task 17.7: Frontend - API Client
+
+**Objective**: Add API client functions for open commands
+
+**Files to Modify**:
+- `VocalFold.WebUI/src/Api.fs`
+
+**Implementation**:
+
+```fsharp
+/// Get all open commands
+let getOpenCommands () : JS.Promise<Result<OpenCommand list, string>> =
+    promise {
+        try
+            let! response = Http.get "/api/open-commands"
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString (Decode.list openCommandDecoder) response.responseText with
+                | Ok commands -> return Ok commands
+                | Error err -> return Error (sprintf "Failed to decode open commands: %s" err)
+            | code ->
+                return Error (sprintf "Server returned status %d" code)
+        with
+        | ex -> return Error (sprintf "Network error: %s" ex.Message)
+    }
+
+/// Create new open command
+let createOpenCommand (command: OpenCommand) : JS.Promise<Result<OpenCommand, string>> =
+    promise {
+        try
+            let json = Encode.toString 0 (encodeOpenCommand command)
+            let! response = Http.post "/api/open-commands" json
+
+            match response.statusCode with
+            | 201 ->
+                match Decode.fromString openCommandDecoder response.responseText with
+                | Ok cmd -> return Ok cmd
+                | Error err -> return Error (sprintf "Failed to decode response: %s" err)
+            | 400 ->
+                // Validation error
+                match Decode.fromString (Decode.field "error" Decode.string) response.responseText with
+                | Ok err -> return Error err
+                | Error _ -> return Error "Validation failed"
+            | code ->
+                return Error (sprintf "Server returned status %d" code)
+        with
+        | ex -> return Error (sprintf "Network error: %s" ex.Message)
+    }
+
+/// Update open command
+let updateOpenCommand (index: int) (command: OpenCommand) : JS.Promise<Result<OpenCommand, string>> =
+    promise {
+        try
+            let json = Encode.toString 0 (encodeOpenCommand command)
+            let! response = Http.put (sprintf "/api/open-commands/%d" index) json
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString openCommandDecoder response.responseText with
+                | Ok cmd -> return Ok cmd
+                | Error err -> return Error (sprintf "Failed to decode response: %s" err)
+            | 400 ->
+                match Decode.fromString (Decode.field "error" Decode.string) response.responseText with
+                | Ok err -> return Error err
+                | Error _ -> return Error "Validation failed"
+            | 404 ->
+                return Error "Command not found"
+            | code ->
+                return Error (sprintf "Server returned status %d" code)
+        with
+        | ex -> return Error (sprintf "Network error: %s" ex.Message)
+    }
+
+/// Delete open command
+let deleteOpenCommand (index: int) : JS.Promise<Result<unit, string>> =
+    promise {
+        try
+            let! response = Http.delete (sprintf "/api/open-commands/%d" index)
+
+            match response.statusCode with
+            | 200 -> return Ok ()
+            | 404 -> return Error "Command not found"
+            | code -> return Error (sprintf "Server returned status %d" code)
+        with
+        | ex -> return Error (sprintf "Network error: %s" ex.Message)
+    }
+
+/// Test open command without saving
+let testOpenCommand (command: OpenCommand) : JS.Promise<Result<TestLaunchResult list, string>> =
+    promise {
+        try
+            let json = Encode.toString 0 (encodeOpenCommand command)
+            let! response = Http.post "/api/open-commands/test" json
+
+            match response.statusCode with
+            | 200 ->
+                match Decode.fromString (Decode.field "results" (Decode.list testLaunchResultDecoder)) response.responseText with
+                | Ok results -> return Ok results
+                | Error err -> return Error (sprintf "Failed to decode results: %s" err)
+            | 400 ->
+                match Decode.fromString (Decode.field "error" Decode.string) response.responseText with
+                | Ok err -> return Error err
+                | Error _ -> return Error "Validation failed"
+            | code ->
+                return Error (sprintf "Server returned status %d" code)
+        with
+        | ex -> return Error (sprintf "Network error: %s" ex.Message)
+    }
+```
+
+**Add decoders**:
+```fsharp
+/// Decode LaunchTarget from JSON
+let launchTargetDecoder: Decoder<LaunchTarget> =
+    Decode.object (fun get -> {
+        Name = get.Required.Field "name" Decode.string
+        Type = get.Required.Field "type" Decode.string
+        Path = get.Required.Field "path" Decode.string
+        Arguments = get.Optional.Field "arguments" Decode.string
+        WorkingDirectory = get.Optional.Field "workingDirectory" Decode.string
+    })
+
+/// Decode OpenCommand from JSON
+let openCommandDecoder: Decoder<OpenCommand> =
+    Decode.object (fun get -> {
+        Keyword = get.Required.Field "keyword" Decode.string
+        Description = get.Optional.Field "description" Decode.string
+        Targets = get.Required.Field "targets" (Decode.list launchTargetDecoder)
+        LaunchDelay = get.Optional.Field "launchDelay" Decode.int
+    })
+
+/// Decode TestLaunchResult from JSON
+let testLaunchResultDecoder: Decoder<TestLaunchResult> =
+    Decode.object (fun get -> {
+        TargetName = get.Required.Field "targetName" Decode.string
+        Success = get.Required.Field "success" Decode.bool
+        ErrorMessage = get.Optional.Field "errorMessage" Decode.string
+        ProcessId = get.Optional.Field "processId" Decode.int
+    })
+```
+
+**Add encoders**:
+```fsharp
+/// Encode LaunchTarget to JSON
+let encodeLaunchTarget (target: LaunchTarget) : JsonValue =
+    Encode.object [
+        "name", Encode.string target.Name
+        "type", Encode.string target.Type
+        "path", Encode.string target.Path
+        "arguments", Encode.option Encode.string target.Arguments
+        "workingDirectory", Encode.option Encode.string target.WorkingDirectory
+    ]
+
+/// Encode OpenCommand to JSON
+let encodeOpenCommand (command: OpenCommand) : JsonValue =
+    Encode.object [
+        "keyword", Encode.string command.Keyword
+        "description", Encode.option Encode.string command.Description
+        "targets", Encode.list (List.map encodeLaunchTarget command.Targets)
+        "launchDelay", Encode.option Encode.int command.LaunchDelay
+    ]
+```
+
+**Acceptance**:
+- [ ] getOpenCommands fetches all commands
+- [ ] createOpenCommand posts new command
+- [ ] updateOpenCommand updates by index
+- [ ] deleteOpenCommand deletes by index
+- [ ] testOpenCommand tests without saving
+- [ ] Decoders handle all fields
+- [ ] Encoders produce correct JSON
+- [ ] Error messages clear and helpful
+
+---
+
+### Task 17.8: Frontend - Open Commands Manager Component
+
+**Objective**: Create UI for managing custom open commands
+
+**Files to Create**:
+- `VocalFold.WebUI/src/Components/OpenCommandsManager.fs`
+
+**Implementation**:
+
+This will be a comprehensive component similar to KeywordManager but for open commands.
+
+**Key Features**:
+- List all open commands with keyword, description, target count
+- Add new open command button
+- Edit existing command button
+- Delete command with confirmation
+- Test command button (launches without saving)
+- Visual feedback for test results
+
+**Component Structure**:
+```fsharp
+module OpenCommandsManager
+
+open Feliz
+open Feliz.UseElmish
+open Elmish
+open Types
+
+type Model = {
+    Commands: LoadingState<OpenCommand list>
+    ModalState: ModalState option
+    TestResults: TestLaunchResult list option
+    ErrorMessage: string option
+}
+
+type ModalState =
+    | AddCommand of OpenCommand
+    | EditCommand of int * OpenCommand
+    | DeleteCommand of int * OpenCommand
+
+type Msg =
+    | LoadCommands
+    | CommandsLoaded of Result<OpenCommand list, string>
+    | OpenAddModal
+    | OpenEditModal of int * OpenCommand
+    | OpenDeleteModal of int * OpenCommand
+    | CloseModal
+    | SaveCommand of OpenCommand
+    | UpdateCommand of int * OpenCommand
+    | DeleteConfirmed of int
+    | CommandSaved of Result<OpenCommand, string>
+    | CommandUpdated of Result<OpenCommand, string>
+    | CommandDeleted of Result<unit, string>
+    | TestCommand of OpenCommand
+    | TestCompleted of Result<TestLaunchResult list, string>
+    | ClearTestResults
+    | ClearError
+
+// Implementation with init, update, view functions
+// Similar to KeywordManager but adapted for OpenCommands
+```
+
+**UI Layout**:
+```
+┌────────────────────────────────────────────────────┐
+│  Custom Open Commands                              │
+│  ┌──────────────────────────────────────────────┐  │
+│  │  [+ Add Open Command]        [Test Selected] │  │
+│  └──────────────────────────────────────────────┘  │
+│                                                    │
+│  ┌────────────────────────────────────────────────┐│
+│  │ Keyword: browser                               ││
+│  │ Description: Open default browser              ││
+│  │ Targets: 1 (URL)                               ││
+│  │ [Edit] [Test] [Delete]                         ││
+│  └────────────────────────────────────────────────┘│
+│                                                    │
+│  ┌────────────────────────────────────────────────┐│
+│  │ Keyword: workspace                             ││
+│  │ Description: Launch development workspace      ││
+│  │ Targets: 3 (VS Code, Terminal, Browser)       ││
+│  │ [Edit] [Test] [Delete]                         ││
+│  └────────────────────────────────────────────────┘│
+└────────────────────────────────────────────────────┘
+```
+
+**Acceptance**:
+- [ ] Lists all open commands
+- [ ] Add button opens modal
+- [ ] Edit button opens modal with data
+- [ ] Delete button shows confirmation
+- [ ] Test button launches and shows results
+- [ ] Visual feedback for loading states
+- [ ] Error messages displayed
+- [ ] Responsive layout
+
+---
+
+### Task 17.9: Frontend - Open Command Modal
+
+**Objective**: Create modal for creating/editing open commands
+
+**Files to Create**:
+- `VocalFold.WebUI/src/Components/OpenCommandModal.fs`
+
+**Features**:
+- Keyword input (text)
+- Description input (textarea)
+- Launch delay input (number, optional)
+- List of targets with add/remove
+- Each target has:
+  - Name input
+  - Type dropdown (executable, url, folder)
+  - Path input (with file/folder picker suggestion)
+  - Arguments input (for executables)
+  - Working directory input (for executables)
+- Save button
+- Cancel button
+- Validation
+
+**UI Layout**:
+```
+┌──────────────────────────────────────────────────┐
+│  Add/Edit Open Command                     [X]   │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  Keyword: [_____________]                        │
+│  (e.g., "browser", "workspace", "email")         │
+│                                                  │
+│  Description: [___________________________]      │
+│  (Optional)                                      │
+│                                                  │
+│  Launch Delay (ms): [____] (optional)            │
+│                                                  │
+│  Targets:                                        │
+│  ┌──────────────────────────────────────────────┐│
+│  │ Target 1                          [Remove]   ││
+│  │ Name: [_______________]                      ││
+│  │ Type: [v Executable   v]                     ││
+│  │ Path: [_______________] [Browse]             ││
+│  │ Arguments: [_______________] (optional)      ││
+│  │ Working Dir: [_______________] (optional)    ││
+│  └──────────────────────────────────────────────┘│
+│                                                  │
+│  [+ Add Target]                                  │
+│                                                  │
+│  [Cancel]                        [Save Command]  │
+└──────────────────────────────────────────────────┘
+```
+
+**Validation**:
+- Keyword required, not empty
+- Keyword cannot be "settings" (reserved)
+- At least one target required
+- Each target: name, type, path required
+- Path validation based on type
+
+**Acceptance**:
+- [ ] Modal opens/closes correctly
+- [ ] All fields editable
+- [ ] Add/remove targets dynamically
+- [ ] Type dropdown shows all options
+- [ ] Validation prevents invalid input
+- [ ] Save triggers API call
+- [ ] Cancel discards changes
+- [ ] Error messages displayed
+
+---
+
+### Task 17.10: Frontend - Integration with Settings Page
+
+**Objective**: Add Open Commands section to settings UI
+
+**Files to Modify**:
+- `VocalFold.WebUI/src/Pages/SystemSettings.fs` (or create new page)
+- `VocalFold.WebUI/src/Types.fs` (add page enum if needed)
+- `VocalFold.WebUI/src/Components/Navigation.fs` (add nav link)
+
+**Implementation**:
+
+**Option A: Add to System Settings Page**:
+```fsharp
+// In SystemSettings.fs
+Html.section [
+    prop.className "mb-8"
+    prop.children [
+        Html.h2 [
+            prop.className "text-2xl font-bold mb-4"
+            prop.text "Custom Open Commands"
+        ]
+        Html.p [
+            prop.className "text-gray-600 mb-4"
+            prop.text "Define custom voice commands to launch applications and URLs."
+        ]
+        OpenCommandsManager.render()
+    ]
+]
+```
+
+**Option B: Create Dedicated Page**:
+```fsharp
+// Add to Page type in Types.fs
+type Page =
+    | Dashboard
+    | SystemSettings
+    | GeneralSettings
+    | KeywordSettings
+    | OpenCommands     // NEW
+    | About
+    | Changelog
+
+// Create new file: VocalFold.WebUI/src/Pages/OpenCommands.fs
+module OpenCommandsPage
+
+let render () =
+    Html.div [
+        prop.className "container mx-auto p-6"
+        prop.children [
+            Html.h1 [
+                prop.className "text-3xl font-bold mb-6"
+                prop.text "Custom Open Commands"
+            ]
+
+            Html.div [
+                prop.className "bg-blue-50 border-l-4 border-blue-500 p-4 mb-6"
+                prop.children [
+                    Html.h3 [
+                        prop.className "font-semibold text-blue-800 mb-2"
+                        prop.text "How to use"
+                    ]
+                    Html.ul [
+                        prop.className "list-disc list-inside text-blue-700 space-y-1"
+                        prop.children [
+                            Html.li [ prop.text "Say \"open [keyword]\" to launch your configured applications" ]
+                            Html.li [ prop.text "Each command can launch one or more applications" ]
+                            Html.li [ prop.text "Test commands before using them" ]
+                        ]
+                    ]
+                ]
+            ]
+
+            OpenCommandsManager.render()
+        ]
+    ]
+```
+
+**Add to Navigation** (if dedicated page):
+```fsharp
+// In Navigation.fs
+navLink "Open Commands" Page.OpenCommands "🚀"
+```
+
+**Acceptance**:
+- [ ] Open Commands accessible from navigation
+- [ ] Page/section renders correctly
+- [ ] Help text explains feature
+- [ ] Layout consistent with other pages
+- [ ] Navigation highlights current page
+
+---
+
+### Task 17.11: Testing & Documentation
+
+**Objective**: Comprehensive testing and documentation
+
+**Testing Checklist**:
+
+**Backend Testing**:
+- [ ] LaunchTarget validation works
+- [ ] OpenCommand validation works
+- [ ] Load/save open commands file
+- [ ] Launch URL in default browser
+- [ ] Launch executable with arguments
+- [ ] Launch executable with working directory
+- [ ] Open folder in Explorer
+- [ ] Launch multiple targets with delay
+- [ ] Handle missing executable gracefully
+- [ ] Handle invalid URL gracefully
+- [ ] Handle invalid path gracefully
+- [ ] Reserved keyword "settings" rejected
+- [ ] Duplicate keywords rejected
+- [ ] Empty targets list rejected
+
+**API Testing**:
+- [ ] GET /api/open-commands returns all
+- [ ] POST /api/open-commands creates
+- [ ] PUT /api/open-commands/{index} updates
+- [ ] DELETE /api/open-commands/{index} deletes
+- [ ] POST /api/open-commands/test launches
+- [ ] Validation errors return 400
+- [ ] Not found errors return 404
+- [ ] Success returns correct status codes
+
+**Integration Testing**:
+- [ ] "open [keyword]" launches app
+- [ ] "open settings" still works (built-in)
+- [ ] Unknown keyword falls back to text
+- [ ] Multiple targets launch in sequence
+- [ ] Launch delay works correctly
+- [ ] Commands reload when file changes
+- [ ] Case-insensitive matching works
+
+**Frontend Testing**:
+- [ ] Commands list loads
+- [ ] Add command modal opens
+- [ ] Edit command modal opens with data
+- [ ] Delete confirmation works
+- [ ] Test button launches and shows results
+- [ ] Save creates new command
+- [ ] Update modifies existing command
+- [ ] Delete removes command
+- [ ] Validation prevents invalid input
+- [ ] Error messages displayed
+
+**End-to-End Testing**:
+- [ ] Create command in UI
+- [ ] Say "open [keyword]"
+- [ ] Application launches
+- [ ] Test multiple targets
+- [ ] Edit command in UI
+- [ ] Delete command in UI
+- [ ] Reload application (persistence)
+
+**Documentation Updates**:
+
+**README.md**:
+```markdown
+### Custom "Open" Commands
+
+VocalFold allows you to create custom voice commands to launch applications, open URLs, or open folders.
+
+#### Creating an Open Command
+
+1. Open Settings from the system tray
+2. Navigate to "Open Commands" (or System Settings)
+3. Click "Add Open Command"
+4. Enter a keyword (e.g., "browser", "workspace")
+5. Add one or more targets:
+   - **URL**: Opens in default browser (e.g., https://google.com)
+   - **Executable**: Launches an application (e.g., C:\Program Files\VSCode\Code.exe)
+   - **Folder**: Opens in Windows Explorer (e.g., C:\Projects)
+6. Optionally set a delay between launches (for multiple targets)
+7. Click "Save Command"
+
+#### Using Open Commands
+
+Simply say "open [keyword]" while recording:
+- "open browser" → Launches your configured browser
+- "open workspace" → Launches your development tools
+- "open email" → Opens email applications
+
+#### Examples
+
+**Single URL**:
+- Keyword: "browser"
+- Target: URL → https://google.com
+
+**Multiple Applications**:
+- Keyword: "workspace"
+- Targets:
+  1. Executable → C:\Program Files\Microsoft VS Code\Code.exe
+  2. Executable → C:\Windows\System32\cmd.exe
+  3. URL → http://localhost:3000
+- Launch Delay: 1000ms (1 second between each)
+
+**Application with Arguments**:
+- Keyword: "project"
+- Target: Executable → C:\Program Files\VSCode\Code.exe
+  - Arguments: C:\Projects\MyProject
+  - Working Directory: C:\Projects
+```
+
+**SPECIFICATION.md** (update):
+```markdown
+## Out of Scope
+
+### Explicitly NOT included:
+...
+- ❌ Voice commands for application control
+
+### Future Enhancements (not in MVP):
+...
+- ✅ Custom "open [keyword]" commands (Phase 17) - IMPLEMENTED
+```
+
+**CONTEXT.md** (update):
+```markdown
+### Current Status
+**Phase**: Phase 17 - Custom Open Commands (Complete) ✅
+**Last Completed**: Phase 17 - Custom Open Commands
+**Status**: Full-featured voice-to-text application with custom app launcher
+
+**Phases Complete**: 17 of 17 phases completed (100%)
+
+- ✅ **Phase 17 COMPLETE - Custom Open Commands**:
+  - Custom "open [keyword]" voice commands
+  - Launch applications, URLs, and folders
+  - Multi-target support (launch multiple apps at once)
+  - Configurable via web UI
+  - Test functionality before saving
+  - Stored in external JSON file (cloud sync compatible)
+```
+
+**TROUBLESHOOTING.md**:
+```markdown
+### Open Command Issues
+
+**Problem**: "open [keyword]" doesn't launch anything
+- Check command exists in settings
+- Verify keyword spelling matches exactly
+- Check VocalFold logs for errors
+- Test the command in settings UI first
+
+**Problem**: Application fails to launch
+- Verify executable path is correct
+- Check file exists at specified path
+- Ensure you have permissions to run executable
+- Try launching manually to test
+- Check arguments are correct
+
+**Problem**: URL doesn't open in browser
+- Verify URL is complete (include https://)
+- Check default browser is set in Windows
+- Try URL directly in browser first
+- Check for typos in URL
+
+**Problem**: Multiple targets launch out of order
+- Increase launch delay in command settings
+- Some applications take time to start
+- Consider splitting into separate commands
+
+**Problem**: "Keyword already exists" error
+- Each keyword must be unique
+- Check for similar keywords (case-insensitive)
+- Delete or rename existing command first
+```
+
+**Acceptance**:
+- [ ] All tests pass
+- [ ] Documentation complete
+- [ ] README updated with examples
+- [ ] SPECIFICATION.md updated
+- [ ] CONTEXT.md updated
+- [ ] TROUBLESHOOTING.md updated
+- [ ] Examples work end-to-end
+- [ ] Ready for production use
+
+---
+
+## Phase 17 Summary
+
+**What We Built**:
+- Custom "open [keyword]" voice commands
+- Application launcher for executables, URLs, and folders
+- Multi-target support (launch multiple items per command)
+- Web UI for command management
+- Test functionality (try before saving)
+- External JSON storage (cloud sync compatible)
+- Full REST API for command management
+
+**Key Features**:
+✅ Voice-activated application launching
+✅ Custom keyword definitions
+✅ Multi-target commands (launch multiple apps)
+✅ Support for URLs, executables, and folders
+✅ Command-line arguments for executables
+✅ Working directory specification
+✅ Configurable launch delays
+✅ Test without saving
+✅ Web UI management
+✅ Validation and error handling
+✅ Persistent storage
+✅ Cloud sync compatible
+
+**Architecture**:
+- Backend: ApplicationLauncher module for launching
+- Backend: TextProcessor integration for command matching
+- REST API: Full CRUD operations for commands
+- Frontend: OpenCommandsManager component
+- Frontend: OpenCommandModal for editing
+- Storage: open-commands.json (separate from keywords)
+- Validation: Client and server-side
+
+**Benefits**:
+- Hands-free application launching
+- Faster workflow setup
+- Customizable to user needs
+- Launch complex multi-app workflows
+- No keyboard/mouse required
+- Accessible for users with mobility issues
+
+**Use Cases**:
+- Developer: "open workspace" → VSCode, Terminal, Browser
+- Designer: "open design tools" → Figma, Adobe XD, Assets folder
+- Writer: "open writing" → Word, Google Docs, Reference folder
+- Student: "open school" → Zoom, OneNote, Course website
+- Business: "open meeting" → Teams, Presentation, Agenda
+
+**Technology**:
+- Backend: F#, System.Diagnostics.Process
+- Frontend: F#, Fable, React, TailwindCSS
+- Storage: JSON file (open-commands.json)
+- Validation: Client + server-side
+
+**Tradeoffs**:
+- Windows-only (uses Windows Explorer, Process.Start)
+- No macOS/Linux support (different shell commands needed)
+- Launch delays approximate (not guaranteed timing)
+- No process monitoring (fire-and-forget)
+- Cannot interact with launched apps (just launches)
+
+---
+
+**Status**: Phase 17 specification complete, ready for implementation
+**Estimated Time**: 12-16 hours (includes backend, frontend, testing, documentation)
+
+**Next Task**: Implement Phase 17 (Task 17.1 - Backend - Open Commands Data Model)
