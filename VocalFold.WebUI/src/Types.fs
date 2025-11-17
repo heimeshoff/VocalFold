@@ -24,6 +24,7 @@ type AppSettings = {
     TypingSpeed: string
     StartWithWindows: bool
     KeywordsFilePath: string option
+    OpenCommandsFilePath: string option
     KeywordReplacements: KeywordReplacement list
     Categories: KeywordCategory list
     SelectedMicrophoneIndex: int option
@@ -43,6 +44,7 @@ type Page =
     | SystemSettings
     | GeneralSettings
     | KeywordSettings
+    | OpenCommandsSettings
     | About
     | Changelog
 
@@ -69,6 +71,12 @@ type KeywordsPathInfo = {
     IsDefault: bool
 }
 
+type OpenCommandsPathInfo = {
+    CurrentPath: string
+    DefaultPath: string
+    IsDefault: bool
+}
+
 type MicrophoneDevice = {
     Index: int
     Name: string
@@ -87,6 +95,32 @@ type MicrophoneTestResult = {
     AvgLevel: float
 }
 
+// ============================================================================
+// Open Commands Types
+// ============================================================================
+
+type LaunchTarget = {
+    Name: string
+    Type: string  // "executable", "url", or "folder"
+    Path: string
+    Arguments: string option
+    WorkingDirectory: string option
+}
+
+type OpenCommand = {
+    Keyword: string
+    Description: string option
+    Targets: LaunchTarget list
+    LaunchDelay: int option
+}
+
+type TestLaunchResult = {
+    TargetName: string
+    Success: bool
+    ErrorMessage: string option
+    ProcessId: int option
+}
+
 type Model = {
     CurrentPage: Page
     Settings: LoadingState<AppSettings>
@@ -99,6 +133,10 @@ type Model = {
     Toasts: Toast list
     KeywordsPath: LoadingState<KeywordsPathInfo>  // Keywords file path info
     EditingKeywordsPath: string option  // Path being edited in the UI
+    OpenCommandsPath: LoadingState<OpenCommandsPathInfo>  // Open commands file path info
+    EditingOpenCommandsPath: string option  // Path being edited in the UI
+    OpenCommands: LoadingState<OpenCommand list>  // Open commands list
+    EditingOpenCommand: (int * OpenCommand) option  // (index, command) being edited, or (-1, command) for new
 }
 
 // ============================================================================
@@ -156,6 +194,28 @@ type Msg =
     | CancelEditingKeywordsPath
     | ExportKeywords of string * bool
     | KeywordsExported of Result<string, string>
+
+    // Open Commands File Path
+    | LoadOpenCommandsPath
+    | OpenCommandsPathLoaded of Result<OpenCommandsPathInfo, string>
+    | StartEditingOpenCommandsPath
+    | UpdateEditingOpenCommandsPath of string
+    | SaveOpenCommandsPath
+    | OpenCommandsPathSaved of Result<string, string>
+    | ResetOpenCommandsPathToDefault
+    | CancelEditingOpenCommandsPath
+
+    // Open Commands
+    | LoadOpenCommands
+    | OpenCommandsLoaded of Result<OpenCommand list, string>
+    | AddOpenCommand
+    | EditOpenCommand of int
+    | UpdateEditingOpenCommand of OpenCommand
+    | SaveOpenCommand of OpenCommand
+    | DeleteOpenCommand of int
+    | CancelEditOpenCommand
+    | TestOpenCommand of OpenCommand
+    | OpenCommandTested of Result<TestLaunchResult list, string>
 
     // UI
     | ShowToast of string * ToastType

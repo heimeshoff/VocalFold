@@ -435,6 +435,70 @@ let exportKeywordsToFileHandler (config: ServerConfig) : HttpHandler =
         }
 
 // ============================================================================
+// Open Commands File Path API Handlers
+// ============================================================================
+
+/// Handler for GET /api/settings/open-commands-path
+let getOpenCommandsPathHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let settings = Settings.load()
+            let currentPath = Settings.getOpenCommandsFilePath settings
+            let defaultPath = Settings.getDefaultOpenCommandsFilePath()
+            let isDefault = currentPath = defaultPath
+
+            return! json {|
+                currentPath = currentPath
+                defaultPath = defaultPath
+                isDefault = isDefault
+            |} next ctx
+        }
+
+/// Handler for PUT /api/settings/open-commands-path
+let updateOpenCommandsPathHandler (config: ServerConfig) : HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            let! body = ctx.BindJsonAsync<{| path: string option |}>()
+            let settings = Settings.load()
+
+            // Validate the path if provided
+            match body.path with
+            | Some path when not (String.IsNullOrWhiteSpace(path)) ->
+                match Settings.validateOpenCommandsFilePath path with
+                | Ok validPath ->
+                    // Update settings with new path
+                    let updatedSettings = { settings with OpenCommandsFilePath = Some validPath }
+
+                    // Save settings
+                    if Settings.save updatedSettings then
+                        config.OnSettingsChanged updatedSettings
+                        // Reload open commands from new path
+                        TextProcessor.reloadOpenCommands validPath
+                        return! json {| success = true; path = validPath |} next ctx
+                    else
+                        ctx.SetStatusCode 500
+                        return! json {| error = "Failed to save settings" |} next ctx
+
+                | Error errorMsg ->
+                    ctx.SetStatusCode 400
+                    return! json {| error = errorMsg |} next ctx
+
+            | _ ->
+                // Reset to default path
+                let updatedSettings = { settings with OpenCommandsFilePath = None }
+
+                if Settings.save updatedSettings then
+                    config.OnSettingsChanged updatedSettings
+                    let defaultPath = Settings.getDefaultOpenCommandsFilePath()
+                    // Reload open commands from default path
+                    TextProcessor.reloadOpenCommands defaultPath
+                    return! json {| success = true; path = defaultPath |} next ctx
+                else
+                    ctx.SetStatusCode 500
+                    return! json {| error = "Failed to save settings" |} next ctx
+        }
+
+// ============================================================================
 // Microphone API Handlers
 // ============================================================================
 
@@ -841,6 +905,8 @@ let webApp (config: ServerConfig) : HttpHandler =
                 PUT  >=> route "/settings" >=> updateSettingsHandler config
                 GET  >=> route "/settings/keywords-path" >=> getKeywordsPathHandler
                 PUT  >=> route "/settings/keywords-path" >=> updateKeywordsPathHandler config
+                GET  >=> route "/settings/open-commands-path" >=> getOpenCommandsPathHandler
+                PUT  >=> route "/settings/open-commands-path" >=> updateOpenCommandsPathHandler config
                 GET  >=> route "/keywords" >=> getKeywordsHandler
                 POST >=> route "/keywords" >=> addKeywordHandler config
                 POST >=> route "/keywords/examples" >=> addExampleKeywordsHandler config

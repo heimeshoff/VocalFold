@@ -219,10 +219,130 @@ let private keywordsFileLocation (keywordsPath: LoadingState<KeywordsPathInfo>) 
     ]
 
 // ============================================================================
+// Open Commands File Location Component
+// ============================================================================
+
+let private openCommandsFileLocation (openCommandsPath: LoadingState<OpenCommandsPathInfo>) (editingOpenCommandsPath: string option) (dispatch: Msg -> unit) =
+    Html.div [
+        prop.className "bg-background-card rounded-lg shadow-lg p-6"
+        prop.children [
+            Html.h3 [
+                prop.className "text-xl font-semibold mb-2 text-text-primary"
+                prop.text "☁️ Open Commands File Location"
+            ]
+            Html.p [
+                prop.className "text-text-secondary text-sm mb-4"
+                prop.text "Configure where your open commands are stored. Use cloud storage (Google Drive, OneDrive, Dropbox) to sync commands across multiple computers."
+            ]
+            match openCommandsPath with
+            | LoadingState.Loaded pathInfo ->
+                Html.div [
+                    prop.className "space-y-4"
+                    prop.children [
+                        // Current Path Display
+                        Html.div [
+                            prop.className "space-y-2"
+                            prop.children [
+                                Html.label [
+                                    prop.className "block text-sm font-medium text-text-secondary"
+                                    prop.text "Current Open Commands File:"
+                                ]
+                                match editingOpenCommandsPath with
+                                | Some path ->
+                                    // Editing mode
+                                    Html.div [
+                                        prop.className "space-y-3"
+                                        prop.children [
+                                            Html.div [
+                                                Html.label [
+                                                    prop.className "block text-sm font-medium text-text-secondary mb-2"
+                                                    prop.text "Enter the full path to your open-commands.json file:"
+                                                ]
+                                                Html.input [
+                                                    prop.type' "text"
+                                                    prop.value path
+                                                    prop.onChange (fun (value: string) -> dispatch (UpdateEditingOpenCommandsPath value))
+                                                    prop.className "w-full px-4 py-2 bg-background-dark border border-white/10 rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:border-primary font-mono text-sm"
+                                                    prop.placeholder "C:\\Users\\YourName\\Google Drive\\VocalFold\\open-commands.json"
+                                                ]
+                                                Html.p [
+                                                    prop.className "text-xs text-text-secondary mt-2"
+                                                    prop.text "💡 Example cloud paths: Google Drive: C:\\Users\\YourName\\Google Drive\\VocalFold\\open-commands.json | OneDrive: C:\\Users\\YourName\\OneDrive\\VocalFold\\open-commands.json"
+                                                ]
+                                            ]
+                                            Html.div [
+                                                prop.className "flex space-x-2"
+                                                prop.children [
+                                                    Button.primaryButton "💾 Save" (fun () -> dispatch SaveOpenCommandsPath)
+                                                    Button.secondaryButton "❌ Cancel" (fun () -> dispatch CancelEditingOpenCommandsPath)
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                                | None ->
+                                    // Display mode
+                                    Html.div [
+                                        prop.className "flex items-center justify-between gap-3"
+                                        prop.children [
+                                            Html.div [
+                                                prop.className "flex-1 flex items-center gap-2 px-4 py-2 bg-background-dark border border-white/10 rounded-lg"
+                                                prop.children [
+                                                    Html.span [
+                                                        prop.className (if pathInfo.IsDefault then "text-text-secondary" else "text-primary")
+                                                        prop.text (if pathInfo.IsDefault then "📁" else "☁️")
+                                                    ]
+                                                    Html.code [
+                                                        prop.className "text-sm text-text-primary flex-1"
+                                                        prop.text pathInfo.CurrentPath
+                                                    ]
+                                                    if not pathInfo.IsDefault then
+                                                        Html.span [
+                                                            prop.className "text-xs bg-primary/20 text-primary px-2 py-1 rounded"
+                                                            prop.text "Cloud Synced"
+                                                        ]
+                                                ]
+                                            ]
+                                            Html.div [
+                                                prop.className "flex space-x-2"
+                                                prop.children [
+                                                    Button.secondaryButton "✏️ Edit Path" (fun () -> dispatch StartEditingOpenCommandsPath)
+                                                    if not pathInfo.IsDefault then
+                                                        Button.secondaryButton "🔄 Reset to Default" (fun () -> dispatch ResetOpenCommandsPathToDefault)
+                                                ]
+                                            ]
+                                        ]
+                                    ]
+                            ]
+                        ]
+                    ]
+                ]
+            | LoadingState.Loading ->
+                Html.div [
+                    prop.className "flex items-center justify-center py-4"
+                    prop.children [
+                        Html.div [
+                            prop.className "animate-spin rounded-full h-8 w-8 border-b-2 border-primary"
+                        ]
+                    ]
+                ]
+            | LoadingState.Error err ->
+                Html.div [
+                    prop.className "text-red-500 text-sm"
+                    prop.text (sprintf "Error loading path: %s" err)
+                ]
+            | LoadingState.NotStarted ->
+                Html.div [
+                    prop.className "text-text-secondary text-sm"
+                    prop.text "Loading..."
+                ]
+        ]
+    ]
+
+// ============================================================================
 // Main View
 // ============================================================================
 
-let view (settings: LoadingState<AppSettings>) (_isRecordingHotkey: bool) (_pendingHotkey: (uint32 * uint32) option) (keywordsPath: LoadingState<KeywordsPathInfo>) (editingKeywordsPath: string option) (dispatch: Msg -> unit) =
+let view (settings: LoadingState<AppSettings>) (_isRecordingHotkey: bool) (_pendingHotkey: (uint32 * uint32) option) (keywordsPath: LoadingState<KeywordsPathInfo>) (editingKeywordsPath: string option) (openCommandsPath: LoadingState<OpenCommandsPathInfo>) (editingOpenCommandsPath: string option) (dispatch: Msg -> unit) =
     Html.div [
         prop.className "space-y-6"
         prop.children [
@@ -239,6 +359,7 @@ let view (settings: LoadingState<AppSettings>) (_isRecordingHotkey: bool) (_pend
                         typingSpeedSelector s.TypingSpeed dispatch s
                         startWithWindowsToggle s.StartWithWindows dispatch s
                         keywordsFileLocation keywordsPath editingKeywordsPath dispatch
+                        openCommandsFileLocation openCommandsPath editingOpenCommandsPath dispatch
                     ]
                 ]
             | LoadingState.Loading ->

@@ -423,6 +423,35 @@ let validateKeywordsFilePath (path: string) : Result<string, string> =
     | ex ->
         Error (sprintf "Invalid path: %s" ex.Message)
 
+/// Validate open commands file path
+let validateOpenCommandsFilePath (path: string) : Result<string, string> =
+    try
+        if String.IsNullOrWhiteSpace(path) then
+            Error "Open commands file path cannot be empty"
+        else
+            // Check if path is absolute
+            if not (Path.IsPathRooted(path)) then
+                Error "Open commands file path must be an absolute path"
+            else
+                // Check if directory exists or can be created
+                let directory = Path.GetDirectoryName(path)
+                if String.IsNullOrEmpty(directory) then
+                    Error "Invalid open commands file path"
+                else
+                    // Try to ensure directory exists
+                    if not (Directory.Exists(directory)) then
+                        // Check if parent directory exists (for cloud storage paths)
+                        let parentDir = Directory.GetParent(directory)
+                        if parentDir = null || not parentDir.Exists then
+                            Error (sprintf "Directory does not exist: %s" directory)
+                        else
+                            Ok path
+                    else
+                        Ok path
+    with
+    | ex ->
+        Error (sprintf "Invalid path: %s" ex.Message)
+
 /// Migrate keywords from old settings format to external file
 /// Returns updated settings with KeywordsFilePath set
 let migrateKeywordsToExternalFile (settings: AppSettings) : AppSettings =
