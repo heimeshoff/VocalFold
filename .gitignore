@@ -41,8 +41,6 @@ ScaffoldingReadMe.txt
 *~
 CodeCoverage/
 
-# Generated logo icon
-logo.ico
 
 # MSBuild Binary and Structured Log
 *.binlog
