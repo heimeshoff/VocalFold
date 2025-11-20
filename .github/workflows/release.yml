@@ -27,7 +27,7 @@ jobs:
         shell: pwsh
         run: |
           $publishDir = Join-Path $env:GITHUB_WORKSPACE "publish"
-          $distDir = Join-Path $env:RUNNER_TEMP "dist"
+          $distDir = Join-Path $env:GITHUB_WORKSPACE "dist"
           "PUBLISH_DIR=$publishDir" >> $env:GITHUB_ENV
           "DIST_DIR=$distDir" >> $env:GITHUB_ENV
           Write-Host "PUBLISH_DIR=$publishDir"
@@ -222,7 +222,17 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Artifacts in $env:DIST_DIR:"
-          Get-ChildItem $env:DIST_DIR | ForEach-Object { Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1MB, 2)) MB)" }
+          Get-ChildItem $env:DIST_DIR | ForEach-Object {
+            $fullPath = $_.FullName
+            Write-Host "  - $($_.Name) ($([math]::Round($_.Length / 1MB, 2)) MB)"
+            Write-Host "    Full path: $fullPath"
+          }
+
+          Write-Host "`nChecking glob patterns:"
+          Write-Host "Pattern: $env:DIST_DIR/*.exe"
+          Get-ChildItem "$env:DIST_DIR/*.exe" | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
+          Write-Host "Pattern: $env:DIST_DIR/*.zip"
+          Get-ChildItem "$env:DIST_DIR/*.zip" | ForEach-Object { Write-Host "  Found: $($_.FullName)" }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -233,8 +243,8 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
           body_path: VocalFold.WebUI/src/CHANGELOG.md
           files: |
-            ${{ env.DIST_DIR }}\*.exe
-            ${{ env.DIST_DIR }}\*.zip
+            dist/*.exe
+            dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -243,6 +253,6 @@ jobs:
         with:
           name: VocalFold-${{ steps.meta.outputs.version }}
           path: |
-            ${{ env.DIST_DIR }}\*.exe
-            ${{ env.DIST_DIR }}\*.zip
+            dist/*.exe
+            dist/*.zip
           retention-days: 30
