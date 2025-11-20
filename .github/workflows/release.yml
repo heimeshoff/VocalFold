@@ -161,9 +161,7 @@ jobs:
           dotnet publish VocalFold/VocalFold.fsproj `
             -c $env:CONFIGURATION `
             -r $env:RUNTIME `
-            -p:PublishSingleFile=true `
             -p:SelfContained=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:PublishTrimmed=false `
             -p:Version=${{ steps.meta.outputs.version }} `
             -o "$env:PUBLISH_DIR"
