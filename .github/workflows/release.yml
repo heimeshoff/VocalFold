@@ -124,8 +124,12 @@ jobs:
             Write-Host "No changes to commit"
           }
 
-      - name: Install npm dependencies
+      - name: Install root npm dependencies
         run: npm install
+
+      - name: Install WebUI npm dependencies
+        run: npm install
+        working-directory: VocalFold.WebUI
 
       - name: Restore .NET tools (Fable)
         run: dotnet tool restore

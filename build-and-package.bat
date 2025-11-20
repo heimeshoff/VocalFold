@@ -73,7 +73,7 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo WebUI build completed successfully!
-echo Output: %ROOT_DIR%VocalFold.WebUI\dist-build
+echo Output: %ROOT_DIR%VocalFold.WebUI\dist
 echo.
 
 echo Step 2: Converting logo to .ico format
@@ -149,9 +149,9 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo.
-echo Copying WebUI dist-build folder...
+echo Copying WebUI dist folder...
 mkdir "%DEPLOY_DIR%\VocalFold.WebUI"
-xcopy /E /I /Y "VocalFold.WebUI\dist-build\*" "%DEPLOY_DIR%\VocalFold.WebUI\dist\"
+xcopy /E /I /Y "VocalFold.WebUI\dist\*" "%DEPLOY_DIR%\VocalFold.WebUI\dist\"
 
 if %ERRORLEVEL% NEQ 0 (
     echo [ERROR] Failed to copy WebUI files

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2025-11-20
+
+### Added
+- Executable Commands feature with application launcher functionality
+- Usage tracking for commands and keyword replacements
+
+
 ## [1.2.3] - 2025-11-06
 
 ### Added
@@ -40,6 +47,7 @@ All notable changes to this project will be documented in this file.
 - General and system settings management
 
 ---
+[1.3.0]: https://github.com/heimeshoff/VocalFold/releases/tag/v1.3.0
 [1.2.2]: https://github.com/heimeshoff/VocalFold/releases/tag/v1.2.2
 [1.1.0]: https://github.com/heimeshoff/VocalFold/releases/tag/v1.1.0
 [1.0.0]: https://github.com/heimeshoff/VocalFold/releases/tag/v-1.0.0
