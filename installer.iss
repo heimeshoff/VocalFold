@@ -2,13 +2,20 @@
 ; https://jrsoftware.org/isinfo.php
 
 #define MyAppName "VocalFold"
-#define MyAppVersion GetStringParam("AppVersion", "1.2.3")
+#ifndef AppVersion
+  #define AppVersion "1.2.3"
+#endif
+#define MyAppVersion AppVersion
 #define MyAppPublisher "VocalFold"
 #define MyAppURL "https://github.com/heimeshoff/VocalFold"
 #define MyAppExeName "VocalFold.exe"
 #define MyAppDescription "Voice to Text Application with AI-powered transcription"
-#define SourceDir GetStringParam("SourceDir", "deploy\VocalFold")
-#define OutputDir GetStringParam("OutputDir", "deploy")
+#ifndef SourceDir
+  #define SourceDir "deploy\VocalFold"
+#endif
+#ifndef OutputDir
+  #define OutputDir "deploy"
+#endif
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
