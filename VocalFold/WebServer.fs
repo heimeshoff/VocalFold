@@ -25,7 +25,7 @@ type ServerConfig = {
     OnSettingsChanged: Settings.AppSettings -> unit
     OnKeywordsChanged: Settings.KeywordData -> unit
     RestartFileWatcher: string -> unit
-    WhisperService: TranscriptionService.WhisperService
+    GetWhisperService: unit -> TranscriptionService.WhisperService
 }
 
 type ServerState = {
@@ -643,7 +643,8 @@ let transcribeMicrophoneTestHandler: HttpHandler =
                     match serverConfig with
                     | Some config ->
                         Logger.info "Transcribing audio..."
-                        let! transcription = config.WhisperService.Transcribe(recording.Samples) |> Async.StartAsTask
+                        let whisperService = config.GetWhisperService()
+                        let! transcription = whisperService.Transcribe(recording.Samples) |> Async.StartAsTask
                         Logger.info (sprintf "Transcription: %s" transcription)
 
                         return! json {|

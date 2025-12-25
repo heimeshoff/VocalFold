@@ -77,22 +77,22 @@ let main argv =
             // Load settings FIRST so we know which model to use
             let mutable currentSettings, isFirstRun = Settings.loadWithFirstRunCheck()
 
-            // Parse model size from settings
-            let modelType =
-                match currentSettings.ModelSize.ToLowerInvariant() with
+            // Helper function to parse model size from string
+            let parseModelType (modelSize: string) =
+                match modelSize.ToLowerInvariant() with
                 | "tiny" -> GgmlType.Tiny
                 | "base" -> GgmlType.Base
                 | "small" -> GgmlType.Small
                 | "medium" -> GgmlType.Medium
                 | "large" | "largev1" -> GgmlType.LargeV1
                 | _ ->
-                    Logger.warning (sprintf "Unknown model size '%s', defaulting to Base" currentSettings.ModelSize)
+                    Logger.warning (sprintf "Unknown model size '%s', defaulting to Base" modelSize)
                     GgmlType.Base
 
-            // Initialize Whisper service with the configured model
+            // Initialize Whisper service with the configured model (mutable for runtime changes)
             Logger.info "Starting Whisper service initialization..."
-            let whisperService =
-                TranscriptionService.createService modelType
+            let mutable whisperService =
+                TranscriptionService.createService (parseModelType currentSettings.ModelSize)
                 |> Async.RunSynchronously
 
             // Perform migration if needed (from old embedded keywords to external file)
@@ -163,6 +163,9 @@ let main argv =
                         let keywordsPathChanged =
                             Settings.getKeywordsFilePath newSettings <> Settings.getKeywordsFilePath currentSettings
 
+                        let modelChanged =
+                            newSettings.ModelSize.ToLowerInvariant() <> currentSettings.ModelSize.ToLowerInvariant()
+
                         // Update current settings
                         currentSettings <- newSettings
 
@@ -177,6 +180,26 @@ let main argv =
                                     Logger.info (sprintf "Hotkey changed to: %s" (Settings.getHotkeyDisplayName currentSettings))
                                 else
                                     Logger.error "Failed to register new hotkey!"
+
+                            if modelChanged then
+                                // Change model at runtime
+                                Logger.info (sprintf "Model size changed to: %s" newSettings.ModelSize)
+                                Logger.info "Loading new Whisper model (this may take a moment)..."
+                                try
+                                    // Dispose old service
+                                    (whisperService :> IDisposable).Dispose()
+
+                                    // Create new service with new model
+                                    whisperService <-
+                                        TranscriptionService.createService (parseModelType newSettings.ModelSize)
+                                        |> Async.RunSynchronously
+
+                                    Logger.info (sprintf "Successfully switched to %s model" newSettings.ModelSize)
+                                    TrayIcon.notifyInfo tray (sprintf "Switched to %s model" newSettings.ModelSize)
+                                with
+                                | ex ->
+                                    Logger.error (sprintf "Failed to switch model: %s" ex.Message)
+                                    TrayIcon.notifyError tray (sprintf "Failed to switch model: %s" ex.Message)
 
                             if startupChanged then
                                 // Handle start with Windows setting change
@@ -277,7 +300,7 @@ let main argv =
                             OnSettingsChanged = onSettingsChanged
                             OnKeywordsChanged = onKeywordsChanged
                             RestartFileWatcher = restartFileWatcher
-                            WhisperService = whisperService
+                            GetWhisperService = fun () -> whisperService
                         }
 
                         let state = WebServer.start serverConfig |> Async.RunSynchronously
