@@ -50,14 +50,50 @@ let main argv =
             Application.SetCompatibleTextRenderingDefault(false)
             Logger.info "Windows Forms initialized"
 
-            // Initialize Whisper service
+            // Log GPU environment info before Whisper initialization
+            Logger.info "========================================="
+            Logger.info "GPU ENVIRONMENT SCAN"
+            Logger.info "========================================="
+
+            // List available Whisper.NET runtime packages
+            try
+                let assemblies = System.AppDomain.CurrentDomain.GetAssemblies()
+                let whisperAssemblies =
+                    assemblies
+                    |> Array.filter (fun a -> a.GetName().Name.ToLowerInvariant().Contains("whisper"))
+                    |> Array.map (fun a -> a.GetName().Name)
+
+                if whisperAssemblies.Length > 0 then
+                    Logger.info "Available Whisper.NET assemblies:"
+                    for asm in whisperAssemblies do
+                        Logger.info (sprintf "  - %s" asm)
+                else
+                    Logger.warning "No Whisper.NET assemblies found - this may indicate a packaging issue"
+            with
+            | ex -> Logger.warning (sprintf "Could not enumerate assemblies: %s" ex.Message)
+
+            Logger.info "========================================="
+
+            // Load settings FIRST so we know which model to use
+            let mutable currentSettings, isFirstRun = Settings.loadWithFirstRunCheck()
+
+            // Parse model size from settings
+            let modelType =
+                match currentSettings.ModelSize.ToLowerInvariant() with
+                | "tiny" -> GgmlType.Tiny
+                | "base" -> GgmlType.Base
+                | "small" -> GgmlType.Small
+                | "medium" -> GgmlType.Medium
+                | "large" | "largev1" -> GgmlType.LargeV1
+                | _ ->
+                    Logger.warning (sprintf "Unknown model size '%s', defaulting to Base" currentSettings.ModelSize)
+                    GgmlType.Base
+
+            // Initialize Whisper service with the configured model
             Logger.info "Starting Whisper service initialization..."
             let whisperService =
-                TranscriptionService.createService GgmlType.Base
+                TranscriptionService.createService modelType
                 |> Async.RunSynchronously
-
-            // Load settings and check if this is the first run
-            let mutable currentSettings, isFirstRun = Settings.loadWithFirstRunCheck()
 
             // Perform migration if needed (from old embedded keywords to external file)
             currentSettings <- Settings.migrateKeywordsToExternalFile currentSettings
@@ -539,7 +575,7 @@ let main argv =
 
             // Show error dialog to user
             try
-                let errorMessage = sprintf "VocalFold has encountered a fatal error and must close.\n\nError: %s\n\nPlease check the log file at:\n%s\n\nCommon issues:\n- Missing NVIDIA GPU or drivers\n- CUDA compatibility problems\n- Network issues during first run (model download)\n\nPress OK to exit." ex.Message (Logger.getLatestLogPath())
+                let errorMessage = sprintf "VocalFold has encountered a fatal error and must close.\n\nError: %s\n\nPlease check the log file at:\n%s\n\nCommon issues:\n- NVIDIA GPU: Missing drivers or CUDA Toolkit 12.x\n- AMD GPU: Update Adrenalin drivers, ensure Vulkan support (RX 6000+ recommended)\n- Intel Arc: Update drivers for Vulkan support\n- Network issues during first run (model download)\n\nThe log file contains detailed GPU runtime detection info.\n\nPress OK to exit." ex.Message (Logger.getLatestLogPath())
 
                 System.Windows.Forms.MessageBox.Show(
                     errorMessage,

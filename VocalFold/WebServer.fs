@@ -893,6 +893,78 @@ let testOpenCommandHandler: HttpHandler =
         }
 
 // ============================================================================
+// GPU Status API Handler
+// ============================================================================
+
+/// Handler for GET /api/gpu-status - Get GPU runtime status and transcription metrics
+let getGpuStatusHandler: HttpHandler =
+    fun (next: HttpFunc) (ctx: HttpContext) ->
+        task {
+            try
+                let runtime = TranscriptionService.getDetectedRuntime()
+                let metrics = TranscriptionService.getLastTranscriptionMetrics()
+
+                let runtimeInfo =
+                    match runtime with
+                    | Some r ->
+                        {|
+                            runtimeType = r.RuntimeType.ToString()
+                            description = r.Description
+                            nativeLibrary = r.NativeLibrary |> Option.defaultValue ""
+                            isGpuAccelerated =
+                                match r.RuntimeType with
+                                | TranscriptionService.CUDA | TranscriptionService.Vulkan -> true
+                                | _ -> false
+                        |}
+                    | None ->
+                        {|
+                            runtimeType = "NotDetected"
+                            description = "Runtime detection has not run yet"
+                            nativeLibrary = ""
+                            isGpuAccelerated = false
+                        |}
+
+                let metricsInfo =
+                    match metrics with
+                    | Some (audioDuration, transcriptionTime, rtf) ->
+                        {|
+                            hasMetrics = true
+                            audioDurationSeconds = audioDuration
+                            transcriptionTimeSeconds = transcriptionTime
+                            realTimeFactor = rtf
+                            performanceWarning =
+                                if rtf > 3.0 then
+                                    Some "Slow transcription detected - GPU acceleration may not be working"
+                                else
+                                    None
+                        |}
+                    | None ->
+                        {|
+                            hasMetrics = false
+                            audioDurationSeconds = 0.0
+                            transcriptionTimeSeconds = 0.0
+                            realTimeFactor = 0.0
+                            performanceWarning = None
+                        |}
+
+                return! json {|
+                    runtime = runtimeInfo
+                    lastTranscription = metricsInfo
+                    troubleshooting = {|
+                        nvidia = "For NVIDIA GPUs: Install CUDA Toolkit 12.x and latest Game Ready drivers"
+                        amd = "For AMD GPUs: Install latest Adrenalin drivers (RX 6000+ recommended for Vulkan)"
+                        intel = "For Intel Arc GPUs: Install latest drivers with Vulkan support"
+                        cpu = "CPU mode is slower but works on any system"
+                    |}
+                |} next ctx
+            with
+            | ex ->
+                Logger.logException ex "Error getting GPU status"
+                ctx.SetStatusCode 500
+                return! json {| error = sprintf "Error getting GPU status: %s" ex.Message |} next ctx
+        }
+
+// ============================================================================
 // Routing
 // ============================================================================
 
@@ -901,6 +973,7 @@ let webApp (config: ServerConfig) : HttpHandler =
         subRoute "/api" (
             choose [
                 GET  >=> route "/status" >=> getStatusHandler
+                GET  >=> route "/gpu-status" >=> getGpuStatusHandler
                 GET  >=> route "/settings" >=> getSettingsHandler
                 PUT  >=> route "/settings" >=> updateSettingsHandler config
                 GET  >=> route "/settings/keywords-path" >=> getKeywordsPathHandler
